@@ -4,12 +4,12 @@
     {
       "label": "build-kava",
       "type": "process",
-      "command": "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe",
+      "command": "dotnet",
       "args": [
-        "${workspaceFolder}/Kava/src/Kava.Windows/Kava.Windows.csproj",
-        "-p:Configuration=Debug",
-        "-p:Platform=ARM64",
-        "-v:minimal"
+        "build",
+        "${workspaceFolder}/Kava/src/Kava.Desktop/Kava.Desktop.csproj",
+        "-c",
+        "Debug"
       ],
       "group": {
         "kind": "build",

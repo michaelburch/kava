@@ -1,4 +1,4 @@
-namespace Kava.Windows;
+namespace Kava.Desktop;
 
 public static class CrashLog
 {

@@ -1,9 +1,5 @@
-namespace Kava.Windows;
+namespace Kava.Desktop;
 
-/// <summary>
-/// Provides realistic sample events for the flyout during development.
-/// This will be replaced by data from the persistence/sync layer.
-/// </summary>
 public static class SampleData
 {
     public static Dictionary<DateOnly, List<EventItem>> CreateSampleEvents()
@@ -11,13 +7,12 @@ public static class SampleData
         var today = DateOnly.FromDateTime(DateTime.Today);
         var events = new Dictionary<DateOnly, List<EventItem>>();
 
-        // Today's events
         events[today] =
         [
             new EventItem
             {
                 Title = "Team standup",
-                TimeRange = "9:00 AM – 9:15 AM",
+                TimeRange = "9:00 AM \u2013 9:15 AM",
                 Subtitle = "Microsoft Teams Meeting",
                 CalendarColor = "#4A90D9",
                 MeetingUrl = "https://example.com/meeting",
@@ -25,20 +20,20 @@ public static class SampleData
             new EventItem
             {
                 Title = "Focus time",
-                TimeRange = "10:00 AM – 12:00 PM",
+                TimeRange = "10:00 AM \u2013 12:00 PM",
                 CalendarColor = "#7B68EE",
             },
             new EventItem
             {
                 Title = "Lunch with Sarah",
-                TimeRange = "12:30 PM – 1:30 PM",
-                Subtitle = "Downtown Café",
+                TimeRange = "12:30 PM \u2013 1:30 PM",
+                Subtitle = "Downtown Caf\u00e9",
                 CalendarColor = "#E85D75",
             },
             new EventItem
             {
                 Title = "Sprint planning",
-                TimeRange = "2:00 PM – 3:00 PM",
+                TimeRange = "2:00 PM \u2013 3:00 PM",
                 Subtitle = "Microsoft Teams Meeting",
                 CalendarColor = "#4A90D9",
                 MeetingUrl = "https://example.com/meeting2",
@@ -46,13 +41,12 @@ public static class SampleData
             new EventItem
             {
                 Title = "Dentist appointment",
-                TimeRange = "4:30 PM – 5:30 PM",
+                TimeRange = "4:30 PM \u2013 5:30 PM",
                 Subtitle = "123 Health St",
                 CalendarColor = "#50C878",
             },
         ];
 
-        // Tomorrow
         events[today.AddDays(1)] =
         [
             new EventItem
@@ -64,39 +58,36 @@ public static class SampleData
             new EventItem
             {
                 Title = "1:1 with manager",
-                TimeRange = "10:00 AM – 10:30 AM",
+                TimeRange = "10:00 AM \u2013 10:30 AM",
                 CalendarColor = "#4A90D9",
                 MeetingUrl = "https://example.com/meeting3",
             },
             new EventItem
             {
                 Title = "Design review",
-                TimeRange = "2:00 PM – 3:00 PM",
+                TimeRange = "2:00 PM \u2013 3:00 PM",
                 Subtitle = "Conference Room B",
                 CalendarColor = "#7B68EE",
             },
         ];
 
-        // Day after tomorrow
         events[today.AddDays(2)] =
         [
             new EventItem
             {
                 Title = "Gym session",
-                TimeRange = "7:00 AM – 8:00 AM",
+                TimeRange = "7:00 AM \u2013 8:00 AM",
                 CalendarColor = "#50C878",
             },
             new EventItem
             {
                 Title = "Architecture sync",
-                TimeRange = "11:00 AM – 12:00 PM",
+                TimeRange = "11:00 AM \u2013 12:00 PM",
                 Subtitle = "Microsoft Teams Meeting",
                 CalendarColor = "#4A90D9",
                 MeetingUrl = "https://example.com/meeting4",
             },
         ];
-
-        // A day with no events is implicit (any day not in the dictionary)
 
         return events;
     }

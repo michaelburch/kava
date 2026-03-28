@@ -1,0 +1,97 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Kava.Desktop.FlyoutWindow"
+        Title="Kava"
+        Width="380" Height="560"
+        CanResize="False"
+        ShowInTaskbar="False"
+        SystemDecorations="None"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent"
+        Topmost="True"
+        WindowStartupLocation="Manual">
+
+    <Border Background="#3D3D3D"
+            CornerRadius="8"
+            Padding="1"
+            ClipToBounds="True">
+    <Border Background="#2C2C2C"
+            CornerRadius="7"
+            ClipToBounds="True">
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*">
+
+        <!-- Row 0: Month/Year header + chevron (darker) -->
+        <Grid Grid.Row="0" Background="#1E1E1E" ColumnDefinitions="*,Auto">
+            <TextBlock x:Name="MonthYearHeading"
+                       Text="March 2026"
+                       FontSize="14" FontWeight="SemiBold"
+                       Foreground="White"
+                       VerticalAlignment="Center"
+                       Margin="16,14,0,8"/>
+
+            <Button Grid.Column="1"
+                    Background="Transparent" BorderBrush="Transparent"
+                    Padding="8,4" Margin="0,8,8,4"
+                    Click="ExpandCollapse_Click"
+                    ToolTip.Tip="Show month calendar">
+                <PathIcon x:Name="ExpandChevron"
+                          Data="M 0,5 L 5,0 L 10,5"
+                          Width="10" Height="6"
+                          Foreground="#CCCCCC"/>
+            </Button>
+        </Grid>
+
+        <!-- Row 1: Date strip (darker) -->
+        <ScrollViewer x:Name="DateStripScroller" Grid.Row="1"
+                      HorizontalScrollBarVisibility="Hidden"
+                      VerticalScrollBarVisibility="Disabled"
+                      Background="#1E1E1E"
+                      IsVisible="False">
+            <StackPanel x:Name="DateStripPanel"
+                        Orientation="Horizontal" Spacing="0"
+                        Margin="12,8,12,4"/>
+        </ScrollViewer>
+
+        <!-- Row 2: Month calendar (expanded by default, darker) -->
+        <Border x:Name="MonthCalendarPanel" Grid.Row="2"
+                Background="#1E1E1E" IsVisible="True"
+                Padding="12,4,12,8">
+            <StackPanel x:Name="MonthCalendarStack" Spacing="2"/>
+        </Border>
+
+        <!-- Row 3: Date heading + add button -->
+        <Grid Grid.Row="3" ColumnDefinitions="*,Auto" Margin="16,8,16,4">
+            <TextBlock x:Name="DateHeading"
+                       Text="March 28"
+                       FontSize="18" FontWeight="SemiBold"
+                       Foreground="White"
+                       VerticalAlignment="Center"/>
+
+            <Button Grid.Column="1"
+                    Background="Transparent" BorderBrush="Transparent"
+                    Padding="8"
+                    ToolTip.Tip="New event">
+                <TextBlock Text="+"
+                           FontSize="20"
+                           Foreground="#999999"
+                           VerticalAlignment="Center"
+                           Margin="0,-4,0,0"/>
+            </Button>
+        </Grid>
+
+        <!-- Row 4: Event list -->
+        <ScrollViewer Grid.Row="4" Margin="8,0,8,8">
+            <StackPanel x:Name="EventListPanel" Spacing="2">
+                <TextBlock x:Name="EmptyState"
+                           Text="No events for this day"
+                           FontSize="13" Foreground="#888888"
+                           HorizontalAlignment="Center"
+                           Margin="0,40,0,0"
+                           IsVisible="False"/>
+            </StackPanel>
+        </ScrollViewer>
+
+    </Grid>
+    </Border>
+    </Border>
+</Window>
