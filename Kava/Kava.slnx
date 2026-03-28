@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Kava.Core/Kava.Core.csproj" />
+    <Project Path="src/Kava.Persistence/Kava.Persistence.csproj" />
+    <Project Path="src/Kava.Providers.CalDav/Kava.Providers.CalDav.csproj" />
+    <Project Path="src/Kava.Windows/Kava.Windows.csproj">
+      <Platform Project="x86" />
+    </Project>
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Kava.Core.Tests/Kava.Core.Tests.csproj" />
+  </Folder>
+</Solution>
