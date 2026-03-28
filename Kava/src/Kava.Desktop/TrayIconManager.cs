@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Avalonia.Styling;
 using Avalonia.Threading;
 
 namespace Kava.Desktop;
@@ -35,6 +36,17 @@ public class TrayIconManager : IDisposable
         };
         _trayIcon.Clicked += (_, _) => Dispatcher.UIThread.Post(ToggleFlyout);
         _trayIcon.IsVisible = true;
+
+        if (Application.Current is { } app)
+            app.ActualThemeVariantChanged += (_, _) => Dispatcher.UIThread.Post(UpdateIconForTheme);
+    }
+
+    private void UpdateIconForTheme()
+    {
+        if (_trayIcon != null)
+            _trayIcon.Icon = CreateIcon();
+        if (_mainWindow != null)
+            _mainWindow.Icon = CreateIcon();
     }
 
     private NativeMenu CreateMenu()
@@ -60,11 +72,12 @@ public class TrayIconManager : IDisposable
 
     public static WindowIcon CreateIcon()
     {
+        var isDark = Application.Current?.ActualThemeVariant != ThemeVariant.Light;
         var pixelSize = new PixelSize(32, 32);
         using var bitmap = new RenderTargetBitmap(pixelSize, new Vector(96, 96));
         using (var ctx = bitmap.CreateDrawingContext())
         {
-            var pen = new Pen(Brushes.White, 1.8);
+            var pen = new Pen(isDark ? Brushes.White : Brushes.Black, 1.8);
             ctx.DrawGeometry(null, pen, BuildKavaShape(16, 16, 22, 18, 5, -15));
         }
 

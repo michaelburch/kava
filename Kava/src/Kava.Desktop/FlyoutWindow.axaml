@@ -11,21 +11,21 @@
         Topmost="True"
         WindowStartupLocation="Manual">
 
-    <Border Background="#3D3D3D"
+    <Border Background="{DynamicResource KavaFlyoutBorder}"
             CornerRadius="8"
             Padding="1"
             ClipToBounds="True">
-    <Border Background="#2C2C2C"
+    <Border Background="{DynamicResource KavaFlyoutBg}"
             CornerRadius="7"
             ClipToBounds="True">
     <Grid RowDefinitions="Auto,Auto,Auto,Auto,*">
 
         <!-- Row 0: Month/Year header (darker) -->
-        <Grid Grid.Row="0" Background="#1E1E1E" ColumnDefinitions="*,Auto">
+        <Grid Grid.Row="0" Background="{DynamicResource KavaCalendarBg}" ColumnDefinitions="*,Auto">
             <TextBlock x:Name="MonthYearHeading"
                        Text="March 2026"
                        FontSize="14" FontWeight="SemiBold"
-                       Foreground="White"
+                       Foreground="{DynamicResource KavaTextPrimary}"
                        VerticalAlignment="Center"
                        Margin="16,14,0,8"/>
 
@@ -36,7 +36,7 @@
                     ToolTip.Tip="Go to today">
                 <TextBlock Text="Today"
                            FontSize="12"
-                           Foreground="#CCCCCC"/>
+                           Foreground="{DynamicResource KavaTextSecondary}"/>
             </Button>
         </Grid>
 
@@ -44,7 +44,7 @@
         <ScrollViewer x:Name="DateStripScroller" Grid.Row="1"
                       HorizontalScrollBarVisibility="Hidden"
                       VerticalScrollBarVisibility="Disabled"
-                      Background="#1E1E1E"
+                      Background="{DynamicResource KavaCalendarBg}"
                       IsVisible="False">
             <StackPanel x:Name="DateStripPanel"
                         Orientation="Horizontal" Spacing="0"
@@ -53,7 +53,7 @@
 
         <!-- Row 2: Month calendar (scrollable, darker) -->
         <Border x:Name="MonthCalendarPanel" Grid.Row="2"
-                Background="#1E1E1E" IsVisible="True"
+                Background="{DynamicResource KavaCalendarBg}" IsVisible="True"
                 Padding="12,4,12,0">
             <Grid RowDefinitions="Auto,Auto">
                 <Grid x:Name="DayOfWeekHeader" Margin="0,0,0,4"/>
@@ -71,7 +71,7 @@
             <TextBlock x:Name="DateHeading"
                        Text="March 28"
                        FontSize="18" FontWeight="SemiBold"
-                       Foreground="White"
+                       Foreground="{DynamicResource KavaTextPrimary}"
                        VerticalAlignment="Center"/>
 
             <Button Grid.Column="1"
@@ -80,7 +80,7 @@
                     ToolTip.Tip="New event">
                 <TextBlock Text="+"
                            FontSize="20"
-                           Foreground="#999999"
+                           Foreground="{DynamicResource KavaTextTertiary}"
                            VerticalAlignment="Center"
                            Margin="0,-4,0,0"/>
             </Button>
@@ -92,7 +92,7 @@
                     ToolTip.Tip="Open full window">
                 <PathIcon Data="M4,4H20V20H4V4M6,8V18H18V8H6Z"
                           Width="14" Height="14"
-                          Foreground="#999999"/>
+                          Foreground="{DynamicResource KavaTextTertiary}"/>
             </Button>
 
             <Button Grid.Column="3"
@@ -103,7 +103,7 @@
                 <PathIcon x:Name="ExpandChevron"
                           Data="M 0,5 L 5,0 L 10,5"
                           Width="10" Height="6"
-                          Foreground="#CCCCCC"/>
+                          Foreground="{DynamicResource KavaTextSecondary}"/>
             </Button>
         </Grid>
 
@@ -112,7 +112,7 @@
             <StackPanel x:Name="EventListPanel" Spacing="2">
                 <TextBlock x:Name="EmptyState"
                            Text="No events for this day"
-                           FontSize="13" Foreground="#888888"
+                           FontSize="13" Foreground="{DynamicResource KavaTextMuted}"
                            HorizontalAlignment="Center"
                            Margin="0,40,0,0"
                            IsVisible="False"/>

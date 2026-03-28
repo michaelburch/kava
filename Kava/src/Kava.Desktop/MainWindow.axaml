@@ -5,12 +5,12 @@
         Width="900" Height="640"
         MinWidth="700" MinHeight="500"
         WindowStartupLocation="CenterScreen"
-        Background="#1E1E1E">
+        Background="{DynamicResource KavaBg}">
 
     <Grid ColumnDefinitions="260,*">
 
         <!-- Left: Calendar sidebar -->
-        <Border Grid.Column="0" Background="#181818" Padding="16">
+        <Border Grid.Column="0" Background="{DynamicResource KavaSidebarBg}" Padding="16">
             <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
 
                 <!-- Month/Year heading with nav arrows -->
@@ -20,14 +20,14 @@
                             Padding="6" Click="PrevMonth_Click">
                         <PathIcon Data="M 8,0 L 0,5 L 8,10"
                                   Width="8" Height="10"
-                                  Foreground="#CCCCCC"/>
+                                  Foreground="{DynamicResource KavaTextSecondary}"/>
                     </Button>
 
                     <TextBlock x:Name="SidebarMonthHeading"
                                Grid.Column="1"
                                Text="March 2026"
                                FontSize="14" FontWeight="SemiBold"
-                               Foreground="White"
+                               Foreground="{DynamicResource KavaTextPrimary}"
                                HorizontalAlignment="Center"
                                VerticalAlignment="Center"/>
 
@@ -36,7 +36,7 @@
                             Padding="6" Click="NextMonth_Click">
                         <PathIcon Data="M 0,0 L 8,5 L 0,10"
                                   Width="8" Height="10"
-                                  Foreground="#CCCCCC"/>
+                                  Foreground="{DynamicResource KavaTextSecondary}"/>
                     </Button>
                 </Grid>
 
@@ -52,36 +52,32 @@
                         <TextBlock x:Name="SidebarDateHeading"
                                    Text="March 28"
                                    FontSize="13" FontWeight="SemiBold"
-                                   Foreground="#CCCCCC"
+                                   Foreground="{DynamicResource KavaTextSecondary}"
                                    Margin="0,0,0,4"/>
                     </StackPanel>
                 </ScrollViewer>
 
                 <!-- Bottom button row -->
                 <Grid Grid.Row="4" ColumnDefinitions="Auto,*" Margin="0,8,0,0">
-                    <Button Background="Transparent" BorderBrush="#444444"
+                    <Button Background="Transparent" BorderBrush="{DynamicResource KavaBorder}"
                             BorderThickness="1" Padding="6,4"
                             CornerRadius="4"
-                            ToolTip.Tip="Add account">
-                        <StackPanel Orientation="Horizontal" Spacing="4">
-                            <TextBlock Text="+"
-                                       FontSize="14"
-                                       Foreground="#CCCCCC"
-                                       VerticalAlignment="Center"/>
-                            <TextBlock Text="Account"
-                                       FontSize="12"
-                                       Foreground="#CCCCCC"
-                                       VerticalAlignment="Center"/>
-                        </StackPanel>
+                            Click="Accounts_Click"
+                            ToolTip.Tip="Manage accounts">
+                        <TextBlock x:Name="AccountsButtonText"
+                                   Text="Accounts"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource KavaTextSecondary}"
+                                   VerticalAlignment="Center"/>
                     </Button>
 
                     <TextBox x:Name="SearchBox"
                              Grid.Column="1"
                              Watermark="Search events..."
                              FontSize="12"
-                             Background="#222222"
-                             Foreground="#CCCCCC"
-                             BorderBrush="#444444"
+                             Background="{DynamicResource KavaInputBg}"
+                             Foreground="{DynamicResource KavaTextSecondary}"
+                             BorderBrush="{DynamicResource KavaBorder}"
                              BorderThickness="1"
                              CornerRadius="4"
                              Padding="6,4"
@@ -95,12 +91,12 @@
         <Grid Grid.Column="1" RowDefinitions="Auto,*">
 
             <!-- Toolbar -->
-            <Border Grid.Row="0" Background="#242424" Padding="16,10">
+            <Border Grid.Row="0" Background="{DynamicResource KavaToolbarBg}" Padding="16,10">
                 <Grid ColumnDefinitions="Auto,*,Auto">
                     <TextBlock x:Name="MainDateHeading"
                                Text="Friday, March 28, 2026"
                                FontSize="20" FontWeight="SemiBold"
-                               Foreground="White"
+                               Foreground="{DynamicResource KavaTextPrimary}"
                                VerticalAlignment="Center"/>
 
                     <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
@@ -109,22 +105,104 @@
                                 Click="GoToToday_Click">
                             <TextBlock Text="Today"
                                        FontSize="13"
-                                       Foreground="#CCCCCC"/>
+                                       Foreground="{DynamicResource KavaTextSecondary}"/>
                         </Button>
                     </StackPanel>
                 </Grid>
             </Border>
 
             <!-- Day agenda -->
-            <ScrollViewer Grid.Row="1" Margin="16,8,16,16">
-                <StackPanel x:Name="MainEventList" Spacing="4">
+            <ScrollViewer x:Name="AgendaScroller" Grid.Row="1" Margin="16,8,16,16">
+                <StackPanel x:Name="MainEventList" Spacing="4" Margin="0,0,14,0">
                     <TextBlock x:Name="MainEmptyState"
                                Text="No events for this day"
-                               FontSize="14" Foreground="#666666"
+                               FontSize="14" Foreground="{DynamicResource KavaTextQuaternary}"
                                HorizontalAlignment="Center"
                                Margin="0,60,0,0"
                                IsVisible="False"/>
                 </StackPanel>
+            </ScrollViewer>
+
+            <!-- Accounts panel -->
+            <ScrollViewer x:Name="AccountsScroller" Grid.Row="1" Margin="16,8,16,16" IsVisible="False">
+                <StackPanel x:Name="AccountsPanel" Spacing="12" Margin="0,0,14,0">
+
+                    <!-- Add account section -->
+                    <Border Background="{DynamicResource KavaCardBg}" CornerRadius="8" Padding="20">
+                        <StackPanel Spacing="12">
+                            <TextBlock Text="Add Account"
+                                       FontSize="16" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource KavaTextPrimary}"/>
+                            <TextBlock Text="Connect a CalDAV/CardDAV server to sync your calendars and contacts."
+                                       FontSize="13" Foreground="{DynamicResource KavaTextTertiary}"
+                                       TextWrapping="Wrap"/>
+
+                            <Grid RowDefinitions="Auto,Auto,Auto,Auto" ColumnDefinitions="100,*" Margin="0,4,0,0">
+                                <TextBlock Text="Display name" FontSize="13" Foreground="{DynamicResource KavaTextSecondary}"
+                                           VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                <TextBox x:Name="AccountNameBox" Grid.Column="1"
+                                         Watermark="My Calendar" FontSize="13"
+                                         Background="{DynamicResource KavaInputBg}" Foreground="{DynamicResource KavaTextSecondary}"
+                                         BorderBrush="{DynamicResource KavaBorder}" CornerRadius="4" Padding="8,6"/>
+
+                                <TextBlock Grid.Row="1" Text="Server URL" FontSize="13" Foreground="{DynamicResource KavaTextSecondary}"
+                                           VerticalAlignment="Center" Margin="0,8,12,0"/>
+                                <TextBox x:Name="AccountUrlBox" Grid.Row="1" Grid.Column="1"
+                                         Watermark="https://cal.example.com" FontSize="13"
+                                         Background="{DynamicResource KavaInputBg}" Foreground="{DynamicResource KavaTextSecondary}"
+                                         BorderBrush="{DynamicResource KavaBorder}" CornerRadius="4" Padding="8,6"
+                                         Margin="0,8,0,0"/>
+
+                                <TextBlock Grid.Row="2" Text="Username" FontSize="13" Foreground="{DynamicResource KavaTextSecondary}"
+                                           VerticalAlignment="Center" Margin="0,8,12,0"/>
+                                <TextBox x:Name="AccountUserBox" Grid.Row="2" Grid.Column="1"
+                                         Watermark="user@example.com" FontSize="13"
+                                         Background="{DynamicResource KavaInputBg}" Foreground="{DynamicResource KavaTextSecondary}"
+                                         BorderBrush="{DynamicResource KavaBorder}" CornerRadius="4" Padding="8,6"
+                                         Margin="0,8,0,0"/>
+
+                                <TextBlock Grid.Row="3" Text="Password" FontSize="13" Foreground="{DynamicResource KavaTextSecondary}"
+                                           VerticalAlignment="Center" Margin="0,8,12,0"/>
+                                <TextBox x:Name="AccountPassBox" Grid.Row="3" Grid.Column="1"
+                                         PasswordChar="&#x2022;" Watermark="&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;" FontSize="13"
+                                         Background="{DynamicResource KavaInputBg}" Foreground="{DynamicResource KavaTextSecondary}"
+                                         BorderBrush="{DynamicResource KavaBorder}" CornerRadius="4" Padding="8,6"
+                                         Margin="0,8,0,0"/>
+                            </Grid>
+
+                            <Button Content="Add Account"
+                                    Background="{DynamicResource KavaAction}" Foreground="White"
+                                    BorderBrush="Transparent"
+                                    Padding="16,8" CornerRadius="4"
+                                    FontSize="13"
+                                    HorizontalAlignment="Left"
+                                    Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Existing accounts (built dynamically) -->
+                    <Grid ColumnDefinitions="*,Auto" Margin="0,8,0,4">
+                        <TextBlock Text="Connected Accounts"
+                                   FontSize="16" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource KavaTextPrimary}"
+                                   VerticalAlignment="Center"/>
+                        <Button Grid.Column="1"
+                                Background="Transparent" BorderBrush="Transparent"
+                                Padding="6" ToolTip.Tip="Sync all accounts">
+                            <PathIcon Data="M12,4V1L8,5l4,4V6c3.31,0 6,2.69 6,6 0,1.01 -0.25,1.97 -0.7,2.8l1.46,1.46C19.54,15.03 20,13.57 20,12 20,7.58 16.42,4 12,4ZM12,18c-3.31,0 -6,-2.69 -6,-6 0,-1.01 0.25,-1.97 0.7,-2.8L5.24,7.74C4.46,8.97 4,10.43 4,12c0,4.42 3.58,8 8,8v3l4,-4 -4,-4v3Z"
+                                       Width="16" Height="16"
+                                       Foreground="{DynamicResource KavaTextSecondary}"/>
+                        </Button>
+                    </Grid>
+
+                    <StackPanel x:Name="AccountListPanel" Spacing="8"/>
+
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Account detail/edit panel -->
+            <ScrollViewer x:Name="AccountDetailScroller" Grid.Row="1" Margin="16,8,16,16" IsVisible="False">
+                <StackPanel x:Name="AccountDetailPanel" Spacing="12" Margin="0,0,14,0"/>
             </ScrollViewer>
         </Grid>
     </Grid>

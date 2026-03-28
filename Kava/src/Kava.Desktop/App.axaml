@@ -1,8 +1,67 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="Kava.Desktop.App"
-             RequestedThemeVariant="Dark">
+             RequestedThemeVariant="Default">
     <Application.Styles>
         <FluentTheme />
     </Application.Styles>
+
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="KavaBg" Color="#1E1E1E"/>
+                    <SolidColorBrush x:Key="KavaSidebarBg" Color="#181818"/>
+                    <SolidColorBrush x:Key="KavaToolbarBg" Color="#242424"/>
+                    <SolidColorBrush x:Key="KavaCardBg" Color="#2A2A2A"/>
+                    <SolidColorBrush x:Key="KavaInputBg" Color="#222222"/>
+                    <SolidColorBrush x:Key="KavaFlyoutBg" Color="#2C2C2C"/>
+                    <SolidColorBrush x:Key="KavaFlyoutBorder" Color="#3D3D3D"/>
+                    <SolidColorBrush x:Key="KavaCalendarBg" Color="#1E1E1E"/>
+                    <SolidColorBrush x:Key="KavaSelectedBg" Color="#333333"/>
+                    <SolidColorBrush x:Key="KavaTextPrimary" Color="White"/>
+                    <SolidColorBrush x:Key="KavaTextSecondary" Color="#CCCCCC"/>
+                    <SolidColorBrush x:Key="KavaTextTertiary" Color="#999999"/>
+                    <SolidColorBrush x:Key="KavaTextMuted" Color="#888888"/>
+                    <SolidColorBrush x:Key="KavaTextQuaternary" Color="#666666"/>
+                    <SolidColorBrush x:Key="KavaTextDisabled" Color="#555555"/>
+                    <SolidColorBrush x:Key="KavaTextSubtle" Color="#AAAAAA"/>
+                    <SolidColorBrush x:Key="KavaBorder" Color="#444444"/>
+                    <SolidColorBrush x:Key="KavaBorderSubtle" Color="#555555"/>
+                    <SolidColorBrush x:Key="KavaAccent" Color="#60CDFF"/>
+                    <SolidColorBrush x:Key="KavaSelection" Color="#C77DBA"/>
+                    <SolidColorBrush x:Key="KavaAction" Color="#0E639C"/>
+                    <SolidColorBrush x:Key="KavaSuccess" Color="#50C878"/>
+                    <SolidColorBrush x:Key="KavaWarning" Color="#F5A623"/>
+                    <SolidColorBrush x:Key="KavaDestructive" Color="#E85D75"/>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="KavaBg" Color="#F3F3F3"/>
+                    <SolidColorBrush x:Key="KavaSidebarBg" Color="#E8E8E8"/>
+                    <SolidColorBrush x:Key="KavaToolbarBg" Color="#FAFAFA"/>
+                    <SolidColorBrush x:Key="KavaCardBg" Color="#FFFFFF"/>
+                    <SolidColorBrush x:Key="KavaInputBg" Color="#FFFFFF"/>
+                    <SolidColorBrush x:Key="KavaFlyoutBg" Color="#F5F5F5"/>
+                    <SolidColorBrush x:Key="KavaFlyoutBorder" Color="#C8C8C8"/>
+                    <SolidColorBrush x:Key="KavaCalendarBg" Color="#EBEBEB"/>
+                    <SolidColorBrush x:Key="KavaSelectedBg" Color="#DEDEDE"/>
+                    <SolidColorBrush x:Key="KavaTextPrimary" Color="#1A1A1A"/>
+                    <SolidColorBrush x:Key="KavaTextSecondary" Color="#444444"/>
+                    <SolidColorBrush x:Key="KavaTextTertiary" Color="#666666"/>
+                    <SolidColorBrush x:Key="KavaTextMuted" Color="#777777"/>
+                    <SolidColorBrush x:Key="KavaTextQuaternary" Color="#888888"/>
+                    <SolidColorBrush x:Key="KavaTextDisabled" Color="#AAAAAA"/>
+                    <SolidColorBrush x:Key="KavaTextSubtle" Color="#555555"/>
+                    <SolidColorBrush x:Key="KavaBorder" Color="#CCCCCC"/>
+                    <SolidColorBrush x:Key="KavaBorderSubtle" Color="#BBBBBB"/>
+                    <SolidColorBrush x:Key="KavaAccent" Color="#0078D4"/>
+                    <SolidColorBrush x:Key="KavaSelection" Color="#C77DBA"/>
+                    <SolidColorBrush x:Key="KavaAction" Color="#0E639C"/>
+                    <SolidColorBrush x:Key="KavaSuccess" Color="#2D9E32"/>
+                    <SolidColorBrush x:Key="KavaWarning" Color="#C4850A"/>
+                    <SolidColorBrush x:Key="KavaDestructive" Color="#D13B53"/>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
 </Application>

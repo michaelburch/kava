@@ -40,6 +40,15 @@ public partial class FlyoutWindow : Window
 
         MonthScroller.ScrollChanged += OnMonthScrollChanged;
         Deactivated += OnDeactivated;
+        ActualThemeVariantChanged += OnThemeChanged;
+    }
+
+    private void OnThemeChanged(object? sender, EventArgs e)
+    {
+        BuildDateStrip();
+        BuildDayOfWeekHeader();
+        BuildMultiMonthCalendar();
+        SelectDate(_selectedDate);
     }
 
     public void PositionNearTaskbar()
@@ -77,7 +86,7 @@ public partial class FlyoutWindow : Window
             {
                 Text = date.ToString("ddd").ToUpperInvariant()[..2],
                 FontSize = 11,
-                Foreground = Brush.Parse("#999999"),
+                Foreground = ThemeHelper.Brush("KavaTextTertiary"),
                 HorizontalAlignment = HorizontalAlignment.Center,
             };
 
@@ -88,8 +97,8 @@ public partial class FlyoutWindow : Window
                 Foreground = isSelected
                     ? Brushes.White
                     : isToday
-                        ? Brush.Parse("#60CDFF")
-                        : Brush.Parse("#CCCCCC"),
+                        ? ThemeHelper.Brush("KavaAccent")
+                        : ThemeHelper.Brush("KavaTextSecondary"),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 FontWeight = isSelected ? FontWeight.SemiBold : FontWeight.Normal,
             };
@@ -107,7 +116,7 @@ public partial class FlyoutWindow : Window
                 stack.Children.Add(new Ellipse
                 {
                     Width = 4, Height = 4,
-                    Fill = Brush.Parse("#60CDFF"),
+                    Fill = ThemeHelper.Brush("KavaAccent"),
                     HorizontalAlignment = HorizontalAlignment.Center,
                 });
             }
@@ -117,7 +126,7 @@ public partial class FlyoutWindow : Window
                 Width = 44, Height = 56,
                 Padding = new Thickness(0),
                 Background = isSelected
-                    ? Brush.Parse("#333333")
+                    ? ThemeHelper.Brush("KavaSelectedBg")
                     : Brushes.Transparent,
                 BorderBrush = Brushes.Transparent,
                 HorizontalContentAlignment = HorizontalAlignment.Center,
@@ -177,14 +186,14 @@ public partial class FlyoutWindow : Window
             if (oldBtn.Content is StackPanel { Children: [TextBlock oldText, ..] })
             {
                 oldText.Foreground = oldDate == today
-                    ? Brush.Parse("#60CDFF")
-                    : Brush.Parse("#CCCCCC");
+                    ? ThemeHelper.Brush("KavaAccent")
+                    : ThemeHelper.Brush("KavaTextSecondary");
             }
         }
 
         if (_dayButtons.TryGetValue(newDate, out var newBtn))
         {
-            newBtn.Background = Brush.Parse("#C77DBA");
+            newBtn.Background = ThemeHelper.Brush("KavaSelection");
             if (newBtn.Content is StackPanel { Children: [TextBlock newText, ..] })
             {
                 newText.Foreground = Brushes.White;
@@ -206,7 +215,7 @@ public partial class FlyoutWindow : Window
         {
             Text = evt.Title,
             FontSize = 14,
-            Foreground = Brushes.White,
+            Foreground = ThemeHelper.Brush("KavaTextPrimary"),
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
 
@@ -219,7 +228,7 @@ public partial class FlyoutWindow : Window
             {
                 Text = "All day",
                 FontSize = 12,
-                Foreground = Brush.Parse("#999999"),
+                Foreground = ThemeHelper.Brush("KavaTextTertiary"),
             });
         }
         else
@@ -230,7 +239,7 @@ public partial class FlyoutWindow : Window
                 {
                     Text = evt.TimeRange,
                     FontSize = 12,
-                    Foreground = Brush.Parse("#999999"),
+                    Foreground = ThemeHelper.Brush("KavaTextTertiary"),
                 });
             }
 
@@ -240,7 +249,7 @@ public partial class FlyoutWindow : Window
                 {
                     Text = evt.Subtitle,
                     FontSize = 11,
-                    Foreground = Brush.Parse("#666666"),
+                    Foreground = ThemeHelper.Brush("KavaTextQuaternary"),
                     TextTrimming = TextTrimming.CharacterEllipsis,
                 });
             }
@@ -271,7 +280,7 @@ public partial class FlyoutWindow : Window
                     FontSize = 11,
                     Foreground = Brushes.White,
                 },
-                Background = Brush.Parse("#0E639C"),
+                Background = ThemeHelper.Brush("KavaAction"),
                 BorderBrush = Brushes.Transparent,
                 Padding = new Thickness(10, 4),
                 CornerRadius = new CornerRadius(4),
@@ -343,7 +352,7 @@ public partial class FlyoutWindow : Window
             {
                 Text = dayNames[c],
                 FontSize = 12,
-                Foreground = Brush.Parse("#888888"),
+                Foreground = ThemeHelper.Brush("KavaTextMuted"),
                 HorizontalAlignment = HorizontalAlignment.Center,
             };
             Grid.SetColumn(lbl, c);
@@ -421,8 +430,8 @@ public partial class FlyoutWindow : Window
                     Foreground = isSelected
                         ? Brushes.White
                         : isToday
-                            ? Brush.Parse("#60CDFF")
-                            : Brush.Parse("#CCCCCC"),
+                            ? ThemeHelper.Brush("KavaAccent")
+                            : ThemeHelper.Brush("KavaTextSecondary"),
                 };
 
                 var cellContent = new StackPanel
@@ -437,7 +446,7 @@ public partial class FlyoutWindow : Window
                     cellContent.Children.Add(new Ellipse
                     {
                         Width = 4, Height = 4,
-                        Fill = Brush.Parse("#60CDFF"),
+                        Fill = ThemeHelper.Brush("KavaAccent"),
                         HorizontalAlignment = HorizontalAlignment.Center,
                         Margin = new Thickness(0, 1, 0, 0),
                     });
@@ -451,7 +460,7 @@ public partial class FlyoutWindow : Window
                     VerticalContentAlignment = VerticalAlignment.Center,
                     CornerRadius = new CornerRadius(20),
                     Background = isSelected
-                        ? Brush.Parse("#C77DBA")
+                        ? ThemeHelper.Brush("KavaSelection")
                         : Brushes.Transparent,
                     BorderBrush = Brushes.Transparent,
                     Content = cellContent,
