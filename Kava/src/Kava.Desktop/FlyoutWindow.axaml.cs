@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
@@ -8,7 +9,6 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Avalonia.Platform.Storage;
 
 namespace Kava.Desktop;
 
@@ -22,17 +22,23 @@ public partial class FlyoutWindow : Window
 
     private DateOnly _selectedDate = DateOnly.FromDateTime(DateTime.Today);
     private bool _monthExpanded = true;
+    private readonly List<(DateOnly month, Control panel)> _monthPanels = new();
+    private readonly Dictionary<DateOnly, Button> _dayButtons = new();
+    private DateOnly _viewMonth;
 
     public FlyoutWindow()
     {
         InitializeComponent();
 
         _sampleEvents = SampleData.CreateSampleEvents();
+        _viewMonth = new DateOnly(_selectedDate.Year, _selectedDate.Month, 1);
         UpdateMonthYearHeading();
         BuildDateStrip();
-        BuildMonthCalendar();
+        BuildDayOfWeekHeader();
+        BuildMultiMonthCalendar();
         SelectDate(_selectedDate);
 
+        MonthScroller.ScrollChanged += OnMonthScrollChanged;
         Deactivated += OnDeactivated;
     }
 
@@ -126,10 +132,15 @@ public partial class FlyoutWindow : Window
 
     private void SelectDate(DateOnly date)
     {
+        var oldDate = _selectedDate;
         _selectedDate = date;
         DateHeading.Text = date.ToString("MMMM d");
-        UpdateMonthYearHeading();
         BuildDateStrip();
+
+        if (_monthExpanded)
+            UpdateDaySelection(oldDate, date);
+        else
+            UpdateMonthYearHeading();
 
         // Keep only EmptyState, remove everything else
         while (EventListPanel.Children.Count > 1)
@@ -154,9 +165,31 @@ public partial class FlyoutWindow : Window
         {
             EmptyState.IsVisible = true;
         }
+    }
 
-        if (_monthExpanded)
-            BuildMonthCalendar();
+    private void UpdateDaySelection(DateOnly oldDate, DateOnly newDate)
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+
+        if (_dayButtons.TryGetValue(oldDate, out var oldBtn))
+        {
+            oldBtn.Background = Brushes.Transparent;
+            if (oldBtn.Content is StackPanel { Children: [TextBlock oldText, ..] })
+            {
+                oldText.Foreground = oldDate == today
+                    ? Brush.Parse("#60CDFF")
+                    : Brush.Parse("#CCCCCC");
+            }
+        }
+
+        if (_dayButtons.TryGetValue(newDate, out var newBtn))
+        {
+            newBtn.Background = Brush.Parse("#C77DBA");
+            if (newBtn.Content is StackPanel { Children: [TextBlock newText, ..] })
+            {
+                newText.Foreground = Brushes.White;
+            }
+        }
     }
 
     private static Control CreateEventCard(EventItem evt, bool isAllDay)
@@ -226,12 +259,46 @@ public partial class FlyoutWindow : Window
         grid.Children.Add(colorBar);
         grid.Children.Add(textStack);
 
+        if (!string.IsNullOrEmpty(evt.MeetingUrl))
+        {
+            grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
+
+            var joinButton = new Button
+            {
+                Content = new TextBlock
+                {
+                    Text = "Join",
+                    FontSize = 11,
+                    Foreground = Brushes.White,
+                },
+                Background = Brush.Parse("#0E639C"),
+                BorderBrush = Brushes.Transparent,
+                Padding = new Thickness(10, 4),
+                CornerRadius = new CornerRadius(4),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(6, 0, 0, 0),
+                Tag = evt.MeetingUrl,
+            };
+            joinButton.Click += JoinMeeting_Click;
+            Grid.SetColumn(joinButton, 3);
+            grid.Children.Add(joinButton);
+        }
+
         return new Border
         {
             Child = grid,
             Padding = new Thickness(8),
             CornerRadius = new CornerRadius(4),
         };
+    }
+
+    private static void JoinMeeting_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string url } && Uri.TryCreate(url, UriKind.Absolute, out var uri)
+            && (uri.Scheme == "https" || uri.Scheme == "http"))
+        {
+            Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+        }
     }
 
     private void DateButton_Click(object? sender, RoutedEventArgs e)
@@ -249,27 +316,25 @@ public partial class FlyoutWindow : Window
         MonthCalendarPanel.IsVisible = _monthExpanded;
         DateStripScroller.IsVisible = !_monthExpanded;
         if (_monthExpanded)
-            BuildMonthCalendar();
+        {
+            _viewMonth = new DateOnly(_selectedDate.Year, _selectedDate.Month, 1);
+            BuildMultiMonthCalendar();
+        }
+        UpdateMonthYearHeading();
     }
 
     private void UpdateMonthYearHeading()
     {
-        var d = new DateTime(_selectedDate.Year, _selectedDate.Month, 1);
-        MonthYearHeading.Text = d.ToString("MMMM yyyy");
+        var month = _monthExpanded ? _viewMonth : new DateOnly(_selectedDate.Year, _selectedDate.Month, 1);
+        MonthYearHeading.Text = new DateTime(month.Year, month.Month, 1).ToString("MMMM yyyy");
     }
 
-    private void BuildMonthCalendar()
+    private void BuildDayOfWeekHeader()
     {
-        MonthCalendarStack.Children.Clear();
-
-        var today = DateOnly.FromDateTime(DateTime.Today);
-        var firstOfMonth = new DateOnly(_selectedDate.Year, _selectedDate.Month, 1);
-        var daysInMonth = DateTime.DaysInMonth(_selectedDate.Year, _selectedDate.Month);
-
-        // Day-of-week header
-        var headerRow = new Grid();
+        DayOfWeekHeader.ColumnDefinitions.Clear();
+        DayOfWeekHeader.Children.Clear();
         for (var c = 0; c < 7; c++)
-            headerRow.ColumnDefinitions.Add(new ColumnDefinition(1, GridUnitType.Star));
+            DayOfWeekHeader.ColumnDefinitions.Add(new ColumnDefinition(1, GridUnitType.Star));
 
         string[] dayNames = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
         for (var c = 0; c < 7; c++)
@@ -282,14 +347,57 @@ public partial class FlyoutWindow : Window
                 HorizontalAlignment = HorizontalAlignment.Center,
             };
             Grid.SetColumn(lbl, c);
-            headerRow.Children.Add(lbl);
+            DayOfWeekHeader.Children.Add(lbl);
         }
-        MonthCalendarStack.Children.Add(headerRow);
+    }
 
+    private DateOnly? _pendingScrollMonth;
+
+    private void BuildMultiMonthCalendar()
+    {
+        MonthCalendarStack.Children.Clear();
+        _monthPanels.Clear();
+        _dayButtons.Clear();
+
+        for (int offset = -12; offset <= 12; offset++)
+        {
+            var monthStart = _viewMonth.AddMonths(offset);
+            var panel = BuildSingleMonth(monthStart);
+            _monthPanels.Add((monthStart, panel));
+            MonthCalendarStack.Children.Add(panel);
+        }
+
+        // Use LayoutUpdated to scroll after the full extent is computed
+        _pendingScrollMonth = _viewMonth;
+        MonthCalendarStack.LayoutUpdated += OnCalendarLayoutUpdated;
+    }
+
+    private void OnCalendarLayoutUpdated(object? sender, EventArgs e)
+    {
+        if (_pendingScrollMonth is not { } target)
+            return;
+
+        for (int i = 0; i < _monthPanels.Count; i++)
+        {
+            if (_monthPanels[i].month == target && _monthPanels[i].panel.Bounds.Height > 0)
+            {
+                MonthScroller.Offset = new Vector(0, _monthPanels[i].panel.Bounds.Y);
+                _pendingScrollMonth = null;
+                MonthCalendarStack.LayoutUpdated -= OnCalendarLayoutUpdated;
+                return;
+            }
+        }
+    }
+
+    private StackPanel BuildSingleMonth(DateOnly firstOfMonth)
+    {
+        var panel = new StackPanel();
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var daysInMonth = DateTime.DaysInMonth(firstOfMonth.Year, firstOfMonth.Month);
         var startDow = (int)firstOfMonth.DayOfWeek;
         var day = 1;
 
-        for (var row = 0; row < 6 && day <= daysInMonth; row++)
+        for (var row = 0; row < 6; row++)
         {
             var weekGrid = new Grid { Margin = new Thickness(0, 2, 0, 2) };
             for (var c = 0; c < 7; c++)
@@ -300,10 +408,9 @@ public partial class FlyoutWindow : Window
                 if ((row == 0 && col < startDow) || day > daysInMonth)
                     continue;
 
-                var date = new DateOnly(_selectedDate.Year, _selectedDate.Month, day);
+                var date = new DateOnly(firstOfMonth.Year, firstOfMonth.Month, day);
                 var isToday = date == today;
                 var isSelected = date == _selectedDate;
-                var hasEvents = _sampleEvents.ContainsKey(date);
 
                 var dayNumber = new TextBlock
                 {
@@ -325,7 +432,7 @@ public partial class FlyoutWindow : Window
                 };
                 cellContent.Children.Add(dayNumber);
 
-                if (hasEvents)
+                if (_sampleEvents.ContainsKey(date))
                 {
                     cellContent.Children.Add(new Ellipse
                     {
@@ -353,9 +460,57 @@ public partial class FlyoutWindow : Window
                 btn.Click += MonthDay_Click;
                 Grid.SetColumn(btn, col);
                 weekGrid.Children.Add(btn);
+                _dayButtons[date] = btn;
                 day++;
             }
-            MonthCalendarStack.Children.Add(weekGrid);
+            panel.Children.Add(weekGrid);
+        }
+
+        return panel;
+    }
+
+    private void ScrollToMonth(DateOnly month)
+    {
+        for (int i = 0; i < _monthPanels.Count; i++)
+        {
+            if (_monthPanels[i].month == month)
+            {
+                var panel = _monthPanels[i].panel;
+                if (panel.Bounds.Height > 0)
+                {
+                    MonthScroller.Offset = new Vector(0, panel.Bounds.Y);
+                }
+                else
+                {
+                    // Layout not ready yet, defer via LayoutUpdated
+                    _pendingScrollMonth = month;
+                    MonthCalendarStack.LayoutUpdated += OnCalendarLayoutUpdated;
+                }
+                break;
+            }
+        }
+    }
+
+    private void OnMonthScrollChanged(object? sender, ScrollChangedEventArgs e)
+    {
+        var viewportTop = MonthScroller.Offset.Y;
+        var viewportHeight = MonthScroller.Viewport.Height;
+        var viewportMid = viewportTop + viewportHeight / 2;
+
+        foreach (var (month, panel) in _monthPanels)
+        {
+            var panelTop = panel.Bounds.Y;
+            var panelBottom = panelTop + panel.Bounds.Height;
+
+            if (panelTop <= viewportMid && panelBottom > viewportMid)
+            {
+                if (_viewMonth != month)
+                {
+                    _viewMonth = month;
+                    MonthYearHeading.Text = new DateTime(month.Year, month.Month, 1).ToString("MMMM yyyy");
+                }
+                break;
+            }
         }
     }
 
@@ -363,5 +518,10 @@ public partial class FlyoutWindow : Window
     {
         if (sender is Button { Tag: DateOnly date })
             SelectDate(date);
+    }
+
+    private void OpenMainWindow_Click(object? sender, RoutedEventArgs e)
+    {
+        // TODO: Open full application window
     }
 }

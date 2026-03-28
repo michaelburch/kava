@@ -5,13 +5,9 @@
       "name": "Kava (Debug)",
       "type": "coreclr",
       "request": "launch",
-      "program": "dotnet",
-      "args": [
-        "run",
-        "--project",
-        "${workspaceFolder}/Kava/src/Kava.Desktop/Kava.Desktop.csproj"
-      ],
-      "cwd": "${workspaceFolder}/Kava/src/Kava.Desktop",
+      "program": "${workspaceFolder}/Kava/src/Kava.Desktop/bin/Debug/net10.0/Kava.Desktop.exe",
+      "args": [],
+      "cwd": "${workspaceFolder}/Kava/src/Kava.Desktop/bin/Debug/net10.0",
       "stopAtEntry": false,
       "console": "internalConsole",
       "preLaunchTask": "build-kava"
