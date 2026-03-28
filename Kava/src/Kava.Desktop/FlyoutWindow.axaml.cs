@@ -522,6 +522,14 @@ public partial class FlyoutWindow : Window
 
     private void OpenMainWindow_Click(object? sender, RoutedEventArgs e)
     {
-        // TODO: Open full application window
+        TrayIconManager.Instance?.ShowMainWindow();
+    }
+
+    private void GoToToday_Click(object? sender, RoutedEventArgs e)
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        _viewMonth = new DateOnly(today.Year, today.Month, 1);
+        BuildMultiMonthCalendar();
+        SelectDate(today);
     }
 }

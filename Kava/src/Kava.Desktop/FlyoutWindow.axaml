@@ -21,13 +21,23 @@
     <Grid RowDefinitions="Auto,Auto,Auto,Auto,*">
 
         <!-- Row 0: Month/Year header (darker) -->
-        <Grid Grid.Row="0" Background="#1E1E1E">
+        <Grid Grid.Row="0" Background="#1E1E1E" ColumnDefinitions="*,Auto">
             <TextBlock x:Name="MonthYearHeading"
                        Text="March 2026"
                        FontSize="14" FontWeight="SemiBold"
                        Foreground="White"
                        VerticalAlignment="Center"
                        Margin="16,14,0,8"/>
+
+            <Button Grid.Column="1"
+                    Background="Transparent" BorderBrush="Transparent"
+                    Padding="8,4" Margin="0,8,8,4"
+                    Click="GoToToday_Click"
+                    ToolTip.Tip="Go to today">
+                <TextBlock Text="Today"
+                           FontSize="12"
+                           Foreground="#CCCCCC"/>
+            </Button>
         </Grid>
 
         <!-- Row 1: Date strip (darker) -->

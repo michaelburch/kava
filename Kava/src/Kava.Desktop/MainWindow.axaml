@@ -1,0 +1,131 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Kava.Desktop.MainWindow"
+        Title="Kava"
+        Width="900" Height="640"
+        MinWidth="700" MinHeight="500"
+        WindowStartupLocation="CenterScreen"
+        Background="#1E1E1E">
+
+    <Grid ColumnDefinitions="260,*">
+
+        <!-- Left: Calendar sidebar -->
+        <Border Grid.Column="0" Background="#181818" Padding="16">
+            <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
+
+                <!-- Month/Year heading with nav arrows -->
+                <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,8">
+                    <Button x:Name="PrevMonthButton"
+                            Background="Transparent" BorderBrush="Transparent"
+                            Padding="6" Click="PrevMonth_Click">
+                        <PathIcon Data="M 8,0 L 0,5 L 8,10"
+                                  Width="8" Height="10"
+                                  Foreground="#CCCCCC"/>
+                    </Button>
+
+                    <TextBlock x:Name="SidebarMonthHeading"
+                               Grid.Column="1"
+                               Text="March 2026"
+                               FontSize="14" FontWeight="SemiBold"
+                               Foreground="White"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"/>
+
+                    <Button Grid.Column="2"
+                            Background="Transparent" BorderBrush="Transparent"
+                            Padding="6" Click="NextMonth_Click">
+                        <PathIcon Data="M 0,0 L 8,5 L 0,10"
+                                  Width="8" Height="10"
+                                  Foreground="#CCCCCC"/>
+                    </Button>
+                </Grid>
+
+                <!-- Day-of-week header -->
+                <Grid x:Name="SidebarDowHeader" Grid.Row="1" Margin="0,0,0,4"/>
+
+                <!-- Month grid -->
+                <StackPanel x:Name="SidebarMonthStack" Grid.Row="2" Spacing="2"/>
+
+                <!-- Mini agenda for selected day -->
+                <ScrollViewer Grid.Row="3" Margin="0,12,0,0">
+                    <StackPanel x:Name="SidebarAgendaPanel" Spacing="4">
+                        <TextBlock x:Name="SidebarDateHeading"
+                                   Text="March 28"
+                                   FontSize="13" FontWeight="SemiBold"
+                                   Foreground="#CCCCCC"
+                                   Margin="0,0,0,4"/>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Bottom button row -->
+                <Grid Grid.Row="4" ColumnDefinitions="Auto,*" Margin="0,8,0,0">
+                    <Button Background="Transparent" BorderBrush="#444444"
+                            BorderThickness="1" Padding="6,4"
+                            CornerRadius="4"
+                            ToolTip.Tip="Add account">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <TextBlock Text="+"
+                                       FontSize="14"
+                                       Foreground="#CCCCCC"
+                                       VerticalAlignment="Center"/>
+                            <TextBlock Text="Account"
+                                       FontSize="12"
+                                       Foreground="#CCCCCC"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+
+                    <TextBox x:Name="SearchBox"
+                             Grid.Column="1"
+                             Watermark="Search events..."
+                             FontSize="12"
+                             Background="#222222"
+                             Foreground="#CCCCCC"
+                             BorderBrush="#444444"
+                             BorderThickness="1"
+                             CornerRadius="4"
+                             Padding="6,4"
+                             Margin="8,0,0,0"
+                             VerticalContentAlignment="Center"/>
+                </Grid>
+            </Grid>
+        </Border>
+
+        <!-- Right: Main content area -->
+        <Grid Grid.Column="1" RowDefinitions="Auto,*">
+
+            <!-- Toolbar -->
+            <Border Grid.Row="0" Background="#242424" Padding="16,10">
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                    <TextBlock x:Name="MainDateHeading"
+                               Text="Friday, March 28, 2026"
+                               FontSize="20" FontWeight="SemiBold"
+                               Foreground="White"
+                               VerticalAlignment="Center"/>
+
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+                        <Button Background="Transparent" BorderBrush="Transparent"
+                                Padding="8" ToolTip.Tip="Today"
+                                Click="GoToToday_Click">
+                            <TextBlock Text="Today"
+                                       FontSize="13"
+                                       Foreground="#CCCCCC"/>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Day agenda -->
+            <ScrollViewer Grid.Row="1" Margin="16,8,16,16">
+                <StackPanel x:Name="MainEventList" Spacing="4">
+                    <TextBlock x:Name="MainEmptyState"
+                               Text="No events for this day"
+                               FontSize="14" Foreground="#666666"
+                               HorizontalAlignment="Center"
+                               Margin="0,60,0,0"
+                               IsVisible="False"/>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+    </Grid>
+</Window>
