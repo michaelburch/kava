@@ -1,0 +1,16 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Kava (ARM64 Debug)",
+      "type": "coreclr",
+      "request": "launch",
+      "program": "${workspaceFolder}/Kava/src/Kava.Windows/bin/ARM64/Debug/net10.0-windows10.0.19041.0/Kava.Windows.exe",
+      "args": [],
+      "cwd": "${workspaceFolder}/Kava/src/Kava.Windows/bin/ARM64/Debug/net10.0-windows10.0.19041.0",
+      "stopAtEntry": false,
+      "console": "internalConsole",
+      "preLaunchTask": "build-kava"
+    }
+  ]
+}
