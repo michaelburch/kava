@@ -10,4 +10,5 @@ public class Calendar
     public bool IsReadOnly { get; set; }
     public bool IsEnabled { get; set; } = true;
     public string? CTag { get; set; }
+    public string? SyncToken { get; set; }
 }

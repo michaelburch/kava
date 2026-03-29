@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
@@ -9,6 +10,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 
 namespace Kava.Desktop;
 
@@ -18,7 +20,7 @@ public partial class FlyoutWindow : Window
     private const int FlyoutHeight = 560;
     private const int FlyoutMargin = 12;
 
-    private readonly Dictionary<DateOnly, List<EventItem>> _sampleEvents;
+    private Dictionary<DateOnly, List<EventItem>> _events;
 
     private DateOnly _selectedDate = DateOnly.FromDateTime(DateTime.Today);
     private bool _monthExpanded = true;
@@ -30,18 +32,53 @@ public partial class FlyoutWindow : Window
     {
         InitializeComponent();
 
-        _sampleEvents = SampleData.CreateSampleEvents();
+        _events = new Dictionary<DateOnly, List<EventItem>>();
         _viewMonth = new DateOnly(_selectedDate.Year, _selectedDate.Month, 1);
         UpdateMonthYearHeading();
-        BuildDateStrip();
         BuildDayOfWeekHeader();
+
+#if SAMPLE_DATA
+        _events = SampleData.CreateSampleEvents();
+#else
+        // Use cached events for instant display
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var cached = App.AccountService?.GetCachedEvents(today.AddMonths(-6), today.AddMonths(6));
+        if (cached != null)
+            _events = cached;
+#endif
+
+        BuildDateStrip();
         BuildMultiMonthCalendar();
         SelectDate(_selectedDate);
+
+#if !SAMPLE_DATA
+        // Refresh from DB in background for any updates
+        Loaded += async (_, _) => await LoadDataAsync();
+#endif
 
         MonthScroller.ScrollChanged += OnMonthScrollChanged;
         Deactivated += OnDeactivated;
         ActualThemeVariantChanged += OnThemeChanged;
     }
+
+#if !SAMPLE_DATA
+    private async Task LoadDataAsync()
+    {
+        var service = App.AccountService;
+        if (service == null) return;
+
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var fresh = await service.GetEventsAsync(today.AddMonths(-6), today.AddMonths(6));
+
+        // Skip rebuild if data hasn't changed (cache was already showing it)
+        if (ReferenceEquals(fresh, _events)) return;
+
+        _events = fresh;
+        BuildDateStrip();
+        BuildMultiMonthCalendar();
+        SelectDate(_selectedDate);
+    }
+#endif
 
     private void OnThemeChanged(object? sender, EventArgs e)
     {
@@ -80,7 +117,7 @@ public partial class FlyoutWindow : Window
             var date = today.AddDays(i);
             var isToday = date == today;
             var isSelected = date == _selectedDate;
-            var hasEvents = _sampleEvents.ContainsKey(date);
+            var hasEvents = _events.ContainsKey(date);
 
             var dayLabel = new TextBlock
             {
@@ -157,7 +194,7 @@ public partial class FlyoutWindow : Window
             EventListPanel.Children.RemoveAt(0);
         }
 
-        if (_sampleEvents.TryGetValue(date, out var events) && events.Count > 0)
+        if (_events.TryGetValue(date, out var events) && events.Count > 0)
         {
             EmptyState.IsVisible = false;
 
@@ -368,7 +405,8 @@ public partial class FlyoutWindow : Window
         _monthPanels.Clear();
         _dayButtons.Clear();
 
-        for (int offset = -12; offset <= 12; offset++)
+        // Build only 3 months initially for fast display
+        for (int offset = -1; offset <= 1; offset++)
         {
             var monthStart = _viewMonth.AddMonths(offset);
             var panel = BuildSingleMonth(monthStart);
@@ -376,7 +414,35 @@ public partial class FlyoutWindow : Window
             MonthCalendarStack.Children.Add(panel);
         }
 
-        // Use LayoutUpdated to scroll after the full extent is computed
+        _pendingScrollMonth = _viewMonth;
+        MonthCalendarStack.LayoutUpdated += OnCalendarLayoutUpdated;
+
+        // Lazily add remaining months after the window is shown
+        Dispatcher.UIThread.Post(ExpandMonthRange, DispatcherPriority.Background);
+    }
+
+    private void ExpandMonthRange()
+    {
+        // Add months -12 to -2 at the beginning
+        for (int offset = -12; offset <= -2; offset++)
+        {
+            var monthStart = _viewMonth.AddMonths(offset);
+            var panel = BuildSingleMonth(monthStart);
+            var insertIdx = offset + 12; // 0..10
+            _monthPanels.Insert(insertIdx, (monthStart, panel));
+            MonthCalendarStack.Children.Insert(insertIdx, panel);
+        }
+
+        // Add months +2 to +12 at the end
+        for (int offset = 2; offset <= 12; offset++)
+        {
+            var monthStart = _viewMonth.AddMonths(offset);
+            var panel = BuildSingleMonth(monthStart);
+            _monthPanels.Add((monthStart, panel));
+            MonthCalendarStack.Children.Add(panel);
+        }
+
+        // Re-scroll to current month (positions shifted after insert)
         _pendingScrollMonth = _viewMonth;
         MonthCalendarStack.LayoutUpdated += OnCalendarLayoutUpdated;
     }
@@ -441,7 +507,7 @@ public partial class FlyoutWindow : Window
                 };
                 cellContent.Children.Add(dayNumber);
 
-                if (_sampleEvents.ContainsKey(date))
+                if (_events.ContainsKey(date))
                 {
                     cellContent.Children.Add(new Ellipse
                     {

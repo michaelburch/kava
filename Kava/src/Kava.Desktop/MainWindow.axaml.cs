@@ -2,20 +2,22 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 
 namespace Kava.Desktop;
 
 public partial class MainWindow : Window
 {
-    private readonly Dictionary<DateOnly, List<EventItem>> _sampleEvents;
+    private Dictionary<DateOnly, List<EventItem>> _events;
     private readonly Dictionary<DateOnly, Button> _dayButtons = new();
-    private readonly List<AccountItem> _accounts;
+    private List<AccountItem> _accounts;
 
     private DateOnly _selectedDate = DateOnly.FromDateTime(DateTime.Today);
     private DateOnly _sidebarMonth;
@@ -28,18 +30,73 @@ public partial class MainWindow : Window
         InitializeComponent();
         Icon = TrayIconManager.CreateIcon();
 
-        _sampleEvents = SampleData.CreateSampleEvents();
-        _accounts = CreateSampleAccounts();
+        _events = new Dictionary<DateOnly, List<EventItem>>();
+        _accounts = [];
         _sidebarMonth = new DateOnly(_selectedDate.Year, _selectedDate.Month, 1);
 
         BuildSidebarDowHeader();
         BuildSidebarMonth();
+
+#if SAMPLE_DATA
+        _events = SampleData.CreateSampleEvents();
+        _accounts = CreateSampleAccounts();
         BuildAccountList();
         SelectDate(_selectedDate);
+#else
+        Loaded += async (_, _) => await LoadDataAsync();
+
+        if (App.Sync != null)
+            App.Sync.SyncCompleted += OnBackgroundSyncCompleted;
+#endif
 
         SearchBox.TextChanged += OnSearchTextChanged;
         ActualThemeVariantChanged += OnThemeChanged;
     }
+
+#if !SAMPLE_DATA
+    private async Task LoadDataAsync()
+    {
+        var service = App.AccountService;
+        if (service == null) return;
+
+        var accounts = await service.GetAccountsAsync();
+        _accounts = [];
+        foreach (var account in accounts)
+        {
+            var calendars = await service.GetCalendarsAsync(account.AccountId);
+            _accounts.Add(new AccountItem
+            {
+                AccountId = account.AccountId,
+                Name = account.DisplayName,
+                ServerUrl = account.ServerBaseUrl,
+                Username = account.Username,
+                Status = account.LastSyncUtc.HasValue ? "Synced" : "Not synced",
+                Calendars = calendars.Select(c => new CalendarInfo
+                {
+                    CalendarId = c.CalendarId,
+                    Name = c.DisplayName,
+                    Color = c.Color,
+                    Enabled = c.IsEnabled,
+                }).ToList(),
+            });
+        }
+
+        // Load events for a wide range (±6 months)
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        _events = await service.GetEventsAsync(
+            today.AddMonths(-6),
+            today.AddMonths(6));
+
+        BuildSidebarMonth();
+        BuildAccountList();
+        SelectDate(_selectedDate);
+    }
+
+    private void OnBackgroundSyncCompleted()
+    {
+        Dispatcher.UIThread.Post(async () => await LoadDataAsync());
+    }
+#endif
 
     private void OnThemeChanged(object? sender, EventArgs e)
     {
@@ -56,6 +113,7 @@ public partial class MainWindow : Window
             SelectDate(_selectedDate);
     }
 
+#if SAMPLE_DATA
     private static List<AccountItem> CreateSampleAccounts() =>
     [
         new AccountItem
@@ -85,6 +143,7 @@ public partial class MainWindow : Window
             ],
         },
     ];
+#endif
 
     private bool _isSearching;
 
@@ -107,7 +166,7 @@ public partial class MainWindow : Window
     {
         MainEventList.Children.Clear();
 
-        var results = _sampleEvents
+        var results = _events
             .SelectMany(kv => kv.Value.Select(ev => (Date: kv.Key, Event: ev)))
             .Where(x => x.Event.Title.Contains(query, StringComparison.OrdinalIgnoreCase)
                       || (x.Event.Subtitle?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false))
@@ -230,7 +289,7 @@ public partial class MainWindow : Window
                 };
                 cellContent.Children.Add(dayNumber);
 
-                if (_sampleEvents.ContainsKey(date))
+                if (_events.ContainsKey(date))
                 {
                     cellContent.Children.Add(new Ellipse
                     {
@@ -298,9 +357,9 @@ public partial class MainWindow : Window
 
         // Build sidebar mini-agenda (keep heading as first child)
         while (SidebarAgendaPanel.Children.Count > 1)
-            SidebarAgendaPanel.Children.RemoveAt(0);
+            SidebarAgendaPanel.Children.RemoveAt(SidebarAgendaPanel.Children.Count - 1);
 
-        if (_sampleEvents.TryGetValue(date, out var events) && events.Count > 0)
+        if (_events.TryGetValue(date, out var events) && events.Count > 0)
         {
             var allDay = events.Where(e => e.IsAllDay);
             var timed = events.Where(e => !e.IsAllDay);
@@ -315,10 +374,10 @@ public partial class MainWindow : Window
         var weekStart = selectedDate.AddDays(-(int)selectedDate.DayOfWeek);
         var weekDays = Enumerable.Range(0, 7).Select(i => weekStart.AddDays(i)).ToList();
 
-        var daysWithEvents = weekDays.Where(d => _sampleEvents.ContainsKey(d)).ToList();
+        var daysWithEvents = weekDays.Where(d => _events.ContainsKey(d)).ToList();
 
         List<DateOnly> daysToShow;
-        if (daysWithEvents.Count > 0 || _sampleEvents.ContainsKey(selectedDate))
+        if (daysWithEvents.Count > 0 || _events.ContainsKey(selectedDate))
         {
             // Show the full week
             daysToShow = weekDays;
@@ -330,7 +389,7 @@ public partial class MainWindow : Window
             var daysInMonth = DateTime.DaysInMonth(selectedDate.Year, selectedDate.Month);
             daysToShow = Enumerable.Range(0, daysInMonth)
                 .Select(i => monthStart.AddDays(i))
-                .Where(d => _sampleEvents.ContainsKey(d) || d == selectedDate)
+                .Where(d => _events.ContainsKey(d) || d == selectedDate)
                 .ToList();
 
             if (!daysToShow.Contains(selectedDate))
@@ -343,7 +402,7 @@ public partial class MainWindow : Window
         foreach (var day in daysToShow)
         {
             var isSelected = day == selectedDate;
-            var hasEvents = _sampleEvents.TryGetValue(day, out var dayEvents) && dayEvents.Count > 0;
+            var hasEvents = _events.TryGetValue(day, out var dayEvents) && dayEvents.Count > 0;
 
             // Day header
             var headerText = day == today
@@ -761,7 +820,7 @@ public partial class MainWindow : Window
             CornerRadius = new CornerRadius(4),
             FontSize = 13,
         });
-        buttonRow.Children.Add(new Button
+        var removeButton = new Button
         {
             Content = "Remove Account",
             Background = Brushes.Transparent,
@@ -771,7 +830,9 @@ public partial class MainWindow : Window
             Padding = new Thickness(16, 8),
             CornerRadius = new CornerRadius(4),
             FontSize = 13,
-        });
+        };
+        removeButton.Click += (_, _) => RemoveAccount_Click(account);
+        buttonRow.Children.Add(removeButton);
         settingsStack.Children.Add(buttonRow);
 
         settingsCard.Child = settingsStack;
@@ -854,13 +915,17 @@ public partial class MainWindow : Window
 
             var capturedCalName = calName;
             var capturedColorButton = colorButton;
-            enabledToggle.IsCheckedChanged += (s, _) =>
+            enabledToggle.IsCheckedChanged += async (s, _) =>
             {
                 if (s is CheckBox { Tag: CalendarInfo ci, IsChecked: { } isChecked })
                 {
                     ci.Enabled = isChecked;
                     capturedCalName.Foreground = isChecked ? ThemeHelper.Brush("KavaTextPrimary") : ThemeHelper.Brush("KavaTextQuaternary");
                     capturedColorButton.Opacity = isChecked ? 1.0 : 0.4;
+#if !SAMPLE_DATA
+                    if (!string.IsNullOrEmpty(ci.CalendarId))
+                        await App.AccountService!.UpdateCalendarEnabledAsync(ci.CalendarId, isChecked);
+#endif
                 }
             };
             colorButton.Opacity = cal.Enabled ? 1.0 : 0.4;
@@ -909,5 +974,106 @@ public partial class MainWindow : Window
         grid.Children.Add(box);
 
         return grid;
+    }
+
+    private async void AddAccount_Click(object? sender, RoutedEventArgs e)
+    {
+#if SAMPLE_DATA
+        // No-op in sample data mode
+        return;
+#else
+        var name = AccountNameBox.Text?.Trim() ?? "";
+        var url = AccountUrlBox.Text?.Trim() ?? "";
+        var user = AccountUserBox.Text?.Trim() ?? "";
+        var pass = AccountPassBox.Text ?? "";
+
+        if (string.IsNullOrEmpty(url) || string.IsNullOrEmpty(user) || string.IsNullOrEmpty(pass))
+        {
+            ShowStatus("Please fill in server URL, username, and password.", isError: true);
+            return;
+        }
+
+        if (string.IsNullOrEmpty(name))
+            name = user;
+
+        AddAccountButton.IsEnabled = false;
+        ShowStatus("Connecting...", isError: false);
+
+        var service = App.AccountService;
+        if (service == null) return;
+
+        var error = await service.AddAccountAsync(name, url, user, pass);
+
+        if (error != null)
+        {
+            ShowStatus(error, isError: true);
+            AddAccountButton.IsEnabled = true;
+            return;
+        }
+
+        // Success — clear form and reload
+        AccountNameBox.Text = "";
+        AccountUrlBox.Text = "";
+        AccountUserBox.Text = "";
+        AccountPassBox.Text = "";
+        ShowStatus("Account added successfully!", isError: false);
+        AddAccountButton.IsEnabled = true;
+
+        await LoadDataAsync();
+        ShowAccountsView();
+#endif
+    }
+
+    private async void SyncAll_Click(object? sender, RoutedEventArgs e)
+    {
+#if SAMPLE_DATA
+        return;
+#else
+        var service = App.AccountService;
+        if (service == null) return;
+
+        MainDateHeading.Text = "Syncing...";
+
+        if (App.Sync != null)
+            await App.Sync.SyncNowAsync();
+        else
+            await service.SyncAllAsync();
+
+        // Reload from DB
+        await LoadDataAsync();
+
+        if (AccountsScroller.IsVisible)
+        {
+            MainDateHeading.Text = "Accounts";
+            BuildAccountList();
+        }
+        else
+        {
+            SelectDate(_selectedDate);
+        }
+#endif
+    }
+
+    private async void RemoveAccount_Click(AccountItem account)
+    {
+#if SAMPLE_DATA
+        return;
+#else
+        var service = App.AccountService;
+        if (service == null) return;
+
+        await service.RemoveAccountAsync(account.AccountId);
+        await LoadDataAsync();
+        ShowAccountsView();
+#endif
+    }
+
+    private void ShowStatus(string message, bool isError)
+    {
+        AddAccountStatus.Text = message;
+        AddAccountStatus.Foreground = isError
+            ? ThemeHelper.Brush("KavaDestructive")
+            : ThemeHelper.Brush("KavaSuccess");
+        AddAccountStatus.IsVisible = true;
     }
 }

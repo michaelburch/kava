@@ -45,11 +45,11 @@ public class CalendarRepository
     {
         using var cmd = _db.Connection.CreateCommand();
         cmd.CommandText = """
-            INSERT INTO Calendars (CalendarId, AccountId, DisplayName, CalDavUrl, Color, IsReadOnly, IsEnabled, CTag)
-            VALUES (@id, @accountId, @name, @url, @color, @ro, @enabled, @ctag)
+            INSERT INTO Calendars (CalendarId, AccountId, DisplayName, CalDavUrl, Color, IsReadOnly, IsEnabled, CTag, SyncToken)
+            VALUES (@id, @accountId, @name, @url, @color, @ro, @enabled, @ctag, @syncToken)
             ON CONFLICT(CalendarId) DO UPDATE SET
                 DisplayName = @name, CalDavUrl = @url, Color = @color,
-                IsReadOnly = @ro, IsEnabled = @enabled, CTag = @ctag
+                IsReadOnly = @ro, IsEnabled = @enabled, CTag = @ctag, SyncToken = @syncToken
             """;
         cmd.Parameters.AddWithValue("@id", calendar.CalendarId);
         cmd.Parameters.AddWithValue("@accountId", calendar.AccountId);
@@ -59,6 +59,7 @@ public class CalendarRepository
         cmd.Parameters.AddWithValue("@ro", calendar.IsReadOnly ? 1 : 0);
         cmd.Parameters.AddWithValue("@enabled", calendar.IsEnabled ? 1 : 0);
         cmd.Parameters.AddWithValue("@ctag", (object?)calendar.CTag ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@syncToken", (object?)calendar.SyncToken ?? DBNull.Value);
         await cmd.ExecuteNonQueryAsync();
     }
 
@@ -72,5 +73,6 @@ public class CalendarRepository
         IsReadOnly = reader.GetInt32(reader.GetOrdinal("IsReadOnly")) == 1,
         IsEnabled = reader.GetInt32(reader.GetOrdinal("IsEnabled")) == 1,
         CTag = reader.IsDBNull(reader.GetOrdinal("CTag")) ? null : reader.GetString(reader.GetOrdinal("CTag")),
+        SyncToken = reader.IsDBNull(reader.GetOrdinal("SyncToken")) ? null : reader.GetString(reader.GetOrdinal("SyncToken")),
     };
 }

@@ -9,10 +9,15 @@
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(UseSampleData)' == 'true'">
+    <DefineConstants>$(DefineConstants);SAMPLE_DATA</DefineConstants>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.3.*" />
     <PackageReference Include="Avalonia.Desktop" Version="11.3.*" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.*" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.*" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -17,6 +19,7 @@ public class TrayIconManager : IDisposable
     private FlyoutWindow? _flyoutWindow;
     private MainWindow? _mainWindow;
     private bool _toggling;
+    private long _flyoutClosedTicks;
 
     public static TrayIconManager? Instance { get; private set; }
 
@@ -39,6 +42,22 @@ public class TrayIconManager : IDisposable
 
         if (Application.Current is { } app)
             app.ActualThemeVariantChanged += (_, _) => Dispatcher.UIThread.Post(UpdateIconForTheme);
+
+        // Pre-warm FlyoutWindow to JIT-compile all methods so first open is fast
+        Dispatcher.UIThread.Post(WarmUpFlyout, DispatcherPriority.Background);
+    }
+
+    private void WarmUpFlyout()
+    {
+        var warmup = new FlyoutWindow();
+        warmup.ShowInTaskbar = false;
+        warmup.Opacity = 0;
+        warmup.Width = 1;
+        warmup.Height = 1;
+        warmup.WindowStartupLocation = WindowStartupLocation.Manual;
+        warmup.Position = new PixelPoint(-9999, -9999);
+        warmup.Show();
+        warmup.Close();
     }
 
     private void UpdateIconForTheme()
@@ -58,7 +77,7 @@ public class TrayIconManager : IDisposable
         menu.Add(openItem);
 
         var syncItem = new NativeMenuItem("Sync Now");
-        syncItem.Click += (_, _) => { /* TODO */ };
+        syncItem.Click += (_, _) => _ = Task.Run(() => App.Sync?.SyncNowAsync());
         menu.Add(syncItem);
 
         menu.Add(new NativeMenuItemSeparator());
@@ -149,6 +168,12 @@ public class TrayIconManager : IDisposable
             }
             else
             {
+                // If the flyout just closed (e.g. clicking the tray icon deactivated it first),
+                // treat this as a close rather than re-opening immediately.
+                var elapsed = Environment.TickCount64 - Interlocked.Read(ref _flyoutClosedTicks);
+                if (elapsed < 500)
+                    return;
+
                 ShowFlyout();
             }
         }
@@ -162,8 +187,14 @@ public class TrayIconManager : IDisposable
     {
         if (_flyoutWindow != null) return;
 
+        App.Sync?.RequestSync();
+
         _flyoutWindow = new FlyoutWindow();
-        _flyoutWindow.Closed += (_, _) => _flyoutWindow = null;
+        _flyoutWindow.Closed += (_, _) =>
+        {
+            Interlocked.Exchange(ref _flyoutClosedTicks, Environment.TickCount64);
+            _flyoutWindow = null;
+        };
         _flyoutWindow.Show();
         _flyoutWindow.PositionNearTaskbar();
     }

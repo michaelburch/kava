@@ -57,8 +57,8 @@ public class EventRepository
                 StartUtc, EndUtc, TimeZoneId, IsAllDay, RecurrenceRule, MeetingUrl, RawICalendarPayload, LastSeenUtc)
             VALUES (@id, @calId, @uid, @url, @etag, @title, @desc, @loc,
                 @start, @end, @tz, @allday, @rrule, @meeting, @raw, @seen)
-            ON CONFLICT(EventId) DO UPDATE SET
-                RemoteUid = @uid, RemoteResourceUrl = @url, ETag = @etag, Title = @title,
+            ON CONFLICT(CalendarId, RemoteUid) DO UPDATE SET
+                RemoteResourceUrl = @url, ETag = @etag, Title = @title,
                 Description = @desc, Location = @loc, StartUtc = @start, EndUtc = @end,
                 TimeZoneId = @tz, IsAllDay = @allday, RecurrenceRule = @rrule,
                 MeetingUrl = @meeting, RawICalendarPayload = @raw, LastSeenUtc = @seen
@@ -97,6 +97,25 @@ public class EventRepository
         }
 
         cmd.CommandText = $"DELETE FROM Events WHERE CalendarId = @calId AND RemoteUid IN ({string.Join(", ", paramNames)})";
+        cmd.Parameters.AddWithValue("@calId", calendarId);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    public async Task DeleteByRemoteUrlsAsync(string calendarId, IEnumerable<string> resourceUrls)
+    {
+        var urls = resourceUrls.ToList();
+        if (urls.Count == 0) return;
+
+        using var cmd = _db.Connection.CreateCommand();
+        var paramNames = new List<string>();
+        for (int i = 0; i < urls.Count; i++)
+        {
+            var p = $"@url{i}";
+            paramNames.Add(p);
+            cmd.Parameters.AddWithValue(p, urls[i]);
+        }
+
+        cmd.CommandText = $"DELETE FROM Events WHERE CalendarId = @calId AND RemoteResourceUrl IN ({string.Join(", ", paramNames)})";
         cmd.Parameters.AddWithValue("@calId", calendarId);
         await cmd.ExecuteNonQueryAsync();
     }

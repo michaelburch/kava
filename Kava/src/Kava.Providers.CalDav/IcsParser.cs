@@ -13,9 +13,16 @@ public static class IcsParser
         var calendar = Calendar.Load(icsData);
         foreach (var vEvent in calendar.Events)
         {
-            var evt = MapEvent(vEvent, calendarId);
-            if (evt != null)
-                events.Add(evt);
+            try
+            {
+                var evt = MapEvent(vEvent, calendarId);
+                if (evt != null)
+                    events.Add(evt);
+            }
+            catch
+            {
+                // Skip events that fail to parse
+            }
         }
 
         return events;
@@ -24,6 +31,7 @@ public static class IcsParser
     private static KavaEvent? MapEvent(IcsCalendarEvent vEvent, string calendarId)
     {
         if (vEvent.DtStart == null) return null;
+        if (string.IsNullOrEmpty(vEvent.Uid)) return null;
 
         var start = vEvent.DtStart.AsDateTimeOffset;
         var end = vEvent.DtEnd?.AsDateTimeOffset ?? start;

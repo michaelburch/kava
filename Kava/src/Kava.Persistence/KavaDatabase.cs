@@ -48,6 +48,7 @@ public class KavaDatabase : IDisposable
                 IsReadOnly INTEGER NOT NULL DEFAULT 0,
                 IsEnabled INTEGER NOT NULL DEFAULT 1,
                 CTag TEXT,
+                SyncToken TEXT,
                 FOREIGN KEY (AccountId) REFERENCES Accounts(AccountId) ON DELETE CASCADE
             );
 
@@ -108,6 +109,56 @@ public class KavaDatabase : IDisposable
             CREATE INDEX IF NOT EXISTS IX_Contacts_AddressBookId ON Contacts(AddressBookId);
             """;
         cmd.ExecuteNonQuery();
+
+        RunMigrations();
+    }
+
+    private void RunMigrations()
+    {
+        // Add SyncToken column to Calendars if it doesn't exist yet
+        AddColumnIfMissing("Calendars", "SyncToken", "TEXT");
+
+        // Remove duplicate events from before the unique index fix
+        DeduplicateEvents();
+
+        // Create unique index after dedup so it doesn't fail on corrupt data
+        using var idx = _connection.CreateCommand();
+        idx.CommandText = "CREATE UNIQUE INDEX IF NOT EXISTS IX_Events_CalendarId_RemoteUid ON Events(CalendarId, RemoteUid)";
+        idx.ExecuteNonQuery();
+    }
+
+    private void DeduplicateEvents()
+    {
+        using var cmd = _connection.CreateCommand();
+        // Keep the most recently seen row per (CalendarId, RemoteUid), delete the rest
+        cmd.CommandText = """
+            DELETE FROM Events WHERE EventId NOT IN (
+                SELECT EventId FROM (
+                    SELECT EventId, ROW_NUMBER() OVER (
+                        PARTITION BY CalendarId, RemoteUid
+                        ORDER BY LastSeenUtc DESC, EventId
+                    ) AS rn FROM Events
+                ) WHERE rn = 1
+            )
+            """;
+        cmd.ExecuteNonQuery();
+    }
+
+    private void AddColumnIfMissing(string table, string column, string type)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = $"PRAGMA table_info({table})";
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            if (string.Equals(reader.GetString(1), column, StringComparison.OrdinalIgnoreCase))
+                return;
+        }
+        reader.Close();
+
+        using var alter = _connection.CreateCommand();
+        alter.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {type}";
+        alter.ExecuteNonQuery();
     }
 
     public void Dispose()

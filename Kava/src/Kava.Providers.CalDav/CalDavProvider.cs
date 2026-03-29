@@ -80,17 +80,162 @@ public class CalDavProvider : ICalendarProvider
         string? syncToken,
         CancellationToken cancellationToken = default)
     {
-        // For now, fall back to a full report for the current year range
-        var start = new DateTimeOffset(DateTimeOffset.UtcNow.Year, 1, 1, 0, 0, 0, TimeSpan.Zero);
-        var end = start.AddYears(1);
+        // Step 1: Check CTag to see if anything changed at all
+        var currentCTag = await GetCTagAsync(calendar.CalDavUrl, cancellationToken);
+        if (currentCTag != null && currentCTag == calendar.CTag)
+        {
+            // Nothing changed on the server
+            return new SyncResult<CalendarEvent>
+            {
+                Changed = [],
+                DeletedUids = [],
+                NewSyncToken = syncToken,
+                NewCTag = currentCTag,
+            };
+        }
+
+        // Step 2: If we have a sync-token, try RFC 6578 sync-collection
+        if (syncToken != null)
+        {
+            var syncResult = await TrySyncCollectionAsync(calendar, syncToken, cancellationToken);
+            if (syncResult != null)
+            {
+                syncResult.NewCTag = currentCTag;
+                return syncResult;
+            }
+            // Server returned 403/invalid token — fall through to full sync
+        }
+
+        // Step 3: Full calendar-query (initial sync or token expired)
+        var start = new DateTimeOffset(DateTimeOffset.UtcNow.Year - 1, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var end = start.AddYears(3);
         var events = await GetEventsAsync(calendar, start, end, cancellationToken);
+
+        // Try to get a sync-token for future incremental syncs
+        var newToken = await GetSyncTokenAsync(calendar.CalDavUrl, cancellationToken);
 
         return new SyncResult<CalendarEvent>
         {
             Changed = events,
             DeletedUids = [],
-            NewSyncToken = null
+            NewSyncToken = newToken,
+            NewCTag = currentCTag,
         };
+    }
+
+    /// <summary>
+    /// Performs a WebDAV sync-collection REPORT (RFC 6578).
+    /// Returns null if the server doesn't support it or the token is invalid.
+    /// </summary>
+    private async Task<SyncResult<CalendarEvent>?> TrySyncCollectionAsync(
+        Calendar calendar, string syncToken, CancellationToken ct)
+    {
+        var requestBody = new XDocument(
+            new XElement(DavNs + "sync-collection",
+                new XAttribute(XNamespace.Xmlns + "d", DavNs),
+                new XAttribute(XNamespace.Xmlns + "c", CalDavNs),
+                new XElement(DavNs + "sync-token", syncToken),
+                new XElement(DavNs + "sync-level", "1"),
+                new XElement(DavNs + "prop",
+                    new XElement(DavNs + "getetag"),
+                    new XElement(CalDavNs + "calendar-data"))));
+
+        var request = new HttpRequestMessage(new HttpMethod("REPORT"), calendar.CalDavUrl);
+        request.Headers.Add("Depth", "1");
+        request.Content = new StringContent(requestBody.ToString(), Encoding.UTF8, "application/xml");
+
+        var response = await _httpClient.SendAsync(request, ct);
+
+        // 403 or 409 means the sync-token is invalid/expired
+        if (response.StatusCode == HttpStatusCode.Forbidden ||
+            response.StatusCode == HttpStatusCode.Conflict)
+            return null;
+
+        if (!response.IsSuccessStatusCode && response.StatusCode != HttpStatusCode.MultiStatus)
+            return null;
+
+        var content = await response.Content.ReadAsStringAsync(ct);
+        var doc = XDocument.Parse(content);
+
+        var changed = new List<CalendarEvent>();
+        var deletedUids = new List<string>();
+
+        foreach (var resp in doc.Descendants(DavNs + "response"))
+        {
+            var href = resp.Element(DavNs + "href")?.Value;
+            if (href == null) continue;
+
+            var status = resp.Descendants(DavNs + "status").FirstOrDefault()?.Value;
+
+            // A 404 status in a sync-collection response means the resource was deleted
+            if (status != null && status.Contains("404"))
+            {
+                // Extract UID from the resource URL so we can match against stored events
+                deletedUids.Add(href);
+                continue;
+            }
+
+            // Changed/new resource — parse calendar data
+            var calData = resp.Descendants(CalDavNs + "calendar-data").FirstOrDefault()?.Value;
+            if (calData == null) continue;
+
+            var etag = resp.Descendants(DavNs + "getetag").FirstOrDefault()?.Value;
+            var parsed = IcsParser.ParseEvents(calData, calendar.CalendarId);
+            foreach (var evt in parsed)
+            {
+                evt.RemoteResourceUrl = href;
+                evt.ETag = etag?.Trim('"');
+                evt.RawICalendarPayload = calData;
+                evt.LastSeenUtc = DateTime.UtcNow;
+                changed.Add(evt);
+            }
+        }
+
+        var newToken = doc.Descendants(DavNs + "sync-token").LastOrDefault()?.Value;
+
+        return new SyncResult<CalendarEvent>
+        {
+            Changed = changed,
+            DeletedUids = deletedUids,
+            NewSyncToken = newToken,
+        };
+    }
+
+    /// <summary>
+    /// Gets the CTag (collection tag) for a calendar via PROPFIND.
+    /// </summary>
+    private async Task<string?> GetCTagAsync(string calendarUrl, CancellationToken ct)
+    {
+        var body = new XDocument(
+            new XElement(DavNs + "propfind",
+                new XAttribute(XNamespace.Xmlns + "cs", "http://calendarserver.org/ns/"),
+                new XElement(DavNs + "prop",
+                    new XElement(XNamespace.Get("http://calendarserver.org/ns/") + "getctag"))));
+
+        var response = await SendPropfindAsync(calendarUrl, body, depth: 0, ct);
+        if (response == null) return null;
+
+        return response
+            .Descendants(XNamespace.Get("http://calendarserver.org/ns/") + "getctag")
+            .FirstOrDefault()?.Value;
+    }
+
+    /// <summary>
+    /// Gets the sync-token for a calendar via PROPFIND (DAV: sync-token property).
+    /// </summary>
+    private async Task<string?> GetSyncTokenAsync(string calendarUrl, CancellationToken ct)
+    {
+        var body = new XDocument(
+            new XElement(DavNs + "propfind",
+                new XElement(DavNs + "prop",
+                    new XElement(DavNs + "sync-token"))));
+
+        var response = await SendPropfindAsync(calendarUrl, body, depth: 0, ct);
+        if (response == null) return null;
+
+        return response
+            .Descendants(DavNs + "sync-token")
+            .FirstOrDefault()?.Value;
     }
 
     private async Task<string?> DiscoverPrincipalAsync(string baseUrl, CancellationToken ct)
