@@ -121,6 +121,12 @@ public class KavaDatabase : IDisposable
         // Remove duplicate events from before the unique index fix
         DeduplicateEvents();
 
+        // Add LocalColor column to Calendars for user color overrides
+        AddColumnIfMissing("Calendars", "LocalColor", "TEXT");
+
+        // Add IcsUrl column for ICS subscription calendars
+        AddColumnIfMissing("Calendars", "IcsUrl", "TEXT");
+
         // Create unique index after dedup so it doesn't fail on corrupt data
         using var idx = _connection.CreateCommand();
         idx.CommandText = "CREATE UNIQUE INDEX IF NOT EXISTS IX_Events_CalendarId_RemoteUid ON Events(CalendarId, RemoteUid)";

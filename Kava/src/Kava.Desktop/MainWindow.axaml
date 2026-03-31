@@ -187,6 +187,60 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- Subscribe to ICS calendar -->
+                    <Border Background="{DynamicResource KavaCardBg}" CornerRadius="8" Padding="20">
+                        <StackPanel Spacing="12">
+                            <TextBlock Text="Subscribe to Calendar"
+                                       FontSize="16" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource KavaTextPrimary}"/>
+                            <TextBlock Text="Subscribe to a read-only ICS calendar feed (e.g. holidays, sports, shared calendars)."
+                                       FontSize="13" Foreground="{DynamicResource KavaTextTertiary}"
+                                       TextWrapping="Wrap"/>
+
+                            <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="100,*" Margin="0,4,0,0">
+                                <TextBlock Text="Name" FontSize="13" Foreground="{DynamicResource KavaTextSecondary}"
+                                           VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                <TextBox x:Name="SubscribeNameBox" Grid.Column="1"
+                                         Watermark="US Holidays" FontSize="13"
+                                         Background="{DynamicResource KavaInputBg}" Foreground="{DynamicResource KavaTextSecondary}"
+                                         BorderBrush="{DynamicResource KavaBorder}" CornerRadius="4" Padding="8,6"/>
+
+                                <TextBlock Grid.Row="1" Text="URL" FontSize="13" Foreground="{DynamicResource KavaTextSecondary}"
+                                           VerticalAlignment="Center" Margin="0,8,12,0"/>
+                                <TextBox x:Name="SubscribeUrlBox" Grid.Row="1" Grid.Column="1"
+                                         Watermark="https://example.com/calendar.ics" FontSize="13"
+                                         Background="{DynamicResource KavaInputBg}" Foreground="{DynamicResource KavaTextSecondary}"
+                                         BorderBrush="{DynamicResource KavaBorder}" CornerRadius="4" Padding="8,6"
+                                         Margin="0,8,0,0"/>
+                            </Grid>
+
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                                <Button x:Name="SubscribeColorSwatch"
+                                        Width="28" Height="28" CornerRadius="4"
+                                        Padding="0"
+                                        BorderBrush="Transparent"
+                                        VerticalAlignment="Center"
+                                        Cursor="Hand">
+                                    <Border Width="28" Height="28" CornerRadius="4"
+                                            Background="#0877cc"
+                                            x:Name="SubscribeColorSwatchInner"/>
+                                </Button>
+                                <Button x:Name="SubscribeButton" Content="Subscribe"
+                                        Background="{DynamicResource KavaAction}" Foreground="White"
+                                        BorderBrush="Transparent"
+                                        Padding="16,8" CornerRadius="4"
+                                        FontSize="13"
+                                        Click="Subscribe_Click"/>
+                            </StackPanel>
+
+                            <TextBlock x:Name="SubscribeStatus"
+                                       FontSize="12"
+                                       TextWrapping="Wrap"
+                                       IsVisible="False"
+                                       Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </Border>
+
                     <!-- Existing accounts (built dynamically) -->
                     <Grid ColumnDefinitions="*,Auto" Margin="0,8,0,4">
                         <TextBlock Text="Connected Accounts"

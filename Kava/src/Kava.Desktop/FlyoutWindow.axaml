@@ -13,10 +13,10 @@
 
     <Border Background="{DynamicResource KavaFlyoutBorder}"
             CornerRadius="8"
-            Padding="1"
+            Padding="1.5"
             ClipToBounds="True">
     <Border Background="{DynamicResource KavaFlyoutBg}"
-            CornerRadius="7"
+            CornerRadius="6.5"
             ClipToBounds="True">
     <Grid RowDefinitions="Auto,Auto,Auto,Auto,*">
 

@@ -393,11 +393,42 @@ public class CalDavProvider : ICalendarProvider
         return new Uri(baseUri, href).ToString();
     }
 
+    /// <summary>
+    /// Sets the calendar color on the server via PROPPATCH.
+    /// Returns true if the server accepted the change.
+    /// </summary>
+    public async Task<bool> SetCalendarColorAsync(
+        string calDavUrl, string color, CancellationToken ct = default)
+    {
+        var body = new XDocument(
+            new XElement(DavNs + "propertyupdate",
+                new XAttribute(XNamespace.Xmlns + "a", AppleNs),
+                new XElement(DavNs + "set",
+                    new XElement(DavNs + "prop",
+                        new XElement(AppleNs + "calendar-color", color)))));
+
+        System.Diagnostics.Debug.WriteLine($"[PROPPATCH] URL: {calDavUrl}");
+        System.Diagnostics.Debug.WriteLine($"[PROPPATCH] Body: {body}");
+
+        var request = new HttpRequestMessage(new HttpMethod("PROPPATCH"), calDavUrl);
+        request.Content = new StringContent(body.ToString(), Encoding.UTF8, "application/xml");
+
+        var response = await _httpClient.SendAsync(request, ct);
+        var responseBody = await response.Content.ReadAsStringAsync(ct);
+        System.Diagnostics.Debug.WriteLine($"[PROPPATCH] Status: {(int)response.StatusCode}");
+        System.Diagnostics.Debug.WriteLine($"[PROPPATCH] Response: {responseBody}");
+
+        return response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.MultiStatus;
+    }
+
     private static string? NormalizeColor(string? color)
     {
         if (string.IsNullOrWhiteSpace(color)) return null;
-        // Apple calendar colors may be #RRGGBBAA — strip the alpha
-        if (color.StartsWith('#') && color.Length == 9)
+        // Ensure leading '#'
+        if (!color.StartsWith('#'))
+            color = "#" + color;
+        // Apple/Synology calendar colors may be #RRGGBBAA — strip the alpha
+        if (color.Length == 9)
             return color[..7];
         return color;
     }

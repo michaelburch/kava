@@ -6,5 +6,6 @@ namespace Kava.Core.Models;
 public enum ProviderType
 {
     CalDav,
+    IcsSubscription,
     // Future: MicrosoftGraph, Google, ICloud
 }
