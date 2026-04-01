@@ -38,3 +38,8 @@ Desktop.ini
 
 ## Crash logs
 crash.log
+
+## SonarQube
+.scannerwork/
+.sonar/
+.sonarqube/
