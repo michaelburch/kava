@@ -62,20 +62,39 @@ jobs:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
     steps:
+      - name: Check Sonar configuration
+        id: sonar-config
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:SONAR_TOKEN)) {
+            "enabled=false" >> $env:GITHUB_OUTPUT
+          }
+          else {
+            "enabled=true" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Skip SonarQube analysis
+        if: steps.sonar-config.outputs.enabled != 'true'
+        shell: pwsh
+        run: Write-Host "SONAR_TOKEN is not configured. Skipping SonarQube analysis."
+
       - name: Check out repository
+        if: steps.sonar-config.outputs.enabled == 'true'
         uses: actions/checkout@v4
 
       - name: Set up .NET 10 SDK
+        if: steps.sonar-config.outputs.enabled == 'true'
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
 
       - name: Run Sonar scan
+        if: steps.sonar-config.outputs.enabled == 'true'
         shell: pwsh
         run: .\Kava\scripts\sonar-scan.ps1
 
       - name: Upload Sonar summary
-        if: always()
+        if: always() && steps.sonar-config.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: sonar-summary
