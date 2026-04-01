@@ -94,7 +94,27 @@ jobs:
       - name: Run Sonar scan
         if: steps.sonar-config.outputs.enabled == 'true'
         shell: pwsh
-        run: .\Kava\scripts\sonar-scan.ps1
+        run: |
+          @(
+            'GITHUB_ACTIONS',
+            'GITHUB_API_URL',
+            'GITHUB_BASE_REF',
+            'GITHUB_EVENT_NAME',
+            'GITHUB_HEAD_REF',
+            'GITHUB_REF',
+            'GITHUB_REF_NAME',
+            'GITHUB_REF_TYPE',
+            'GITHUB_REPOSITORY',
+            'GITHUB_REPOSITORY_ID',
+            'GITHUB_REPOSITORY_OWNER',
+            'GITHUB_REPOSITORY_OWNER_ID',
+            'GITHUB_SERVER_URL',
+            'GITHUB_SHA'
+          ) | ForEach-Object {
+            Remove-Item "Env:$_" -ErrorAction SilentlyContinue
+          }
+
+          .\Kava\scripts\sonar-scan.ps1
 
       - name: Upload Sonar summary
         if: always() && steps.sonar-config.outputs.enabled == 'true'
