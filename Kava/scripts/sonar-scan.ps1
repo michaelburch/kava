@@ -25,6 +25,7 @@ param(
     [string]$Configuration = "Debug",
     [string]$SolutionPath = "Kava.slnx",
     [string]$NuGetSource = "https://api.nuget.org/v3/index.json",
+    [bool]$UseScannerCliEndStep = $true,
     [string]$CoverageExclusions = "src/Kava.Desktop/**/*.axaml,src/Kava.Desktop/App.axaml.cs,src/Kava.Desktop/FlyoutWindow.axaml.cs,src/Kava.Desktop/MainWindow.axaml.cs,src/Kava.Desktop/Program.cs,src/Kava.Desktop/ThemeHelper.cs,src/Kava.Desktop/TrayIconManager.cs",
     [int]$PollingIntervalSeconds = 5,
     [int]$PollingTimeoutSeconds = 300
@@ -815,6 +816,10 @@ try {
         "/d:sonar.token=$SonarToken",
         "/d:sonar.cs.opencover.reportsPaths=**/coverage.opencover.xml"
     )
+
+    if ($UseScannerCliEndStep) {
+        $sonarBeginArguments += "/d:sonar.scanner.useSonarScannerCLI=true"
+    }
 
     if (-not [string]::IsNullOrWhiteSpace($CoverageExclusions)) {
         $sonarBeginArguments += "/d:sonar.coverage.exclusions=$CoverageExclusions"
