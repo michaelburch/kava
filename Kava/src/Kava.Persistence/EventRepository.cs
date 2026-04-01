@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text.Json;
 using Kava.Core.Models;
 using Microsoft.Data.Sqlite;
 
@@ -5,6 +7,11 @@ namespace Kava.Persistence;
 
 public class EventRepository
 {
+    private const string CalendarIdParameter = "@calId";
+    private const string CalendarIdsJsonParameter = "@calendarIdsJson";
+    private const string RemoteUidsJsonParameter = "@remoteUidsJson";
+    private const string ResourceUrlsJsonParameter = "@resourceUrlsJson";
+
     private readonly KavaDatabase _db;
 
     public EventRepository(KavaDatabase db)
@@ -23,21 +30,17 @@ public class EventRepository
 
         using var cmd = _db.Connection.CreateCommand();
 
-        // Build parameterized IN clause
-        var paramNames = new List<string>();
-        for (int i = 0; i < ids.Count; i++)
-        {
-            var paramName = $"@cal{i}";
-            paramNames.Add(paramName);
-            cmd.Parameters.AddWithValue(paramName, ids[i]);
-        }
-
-        cmd.CommandText = $"""
+        cmd.CommandText = """
             SELECT * FROM Events
-            WHERE CalendarId IN ({string.Join(", ", paramNames)})
+            WHERE EXISTS (
+                SELECT 1
+                FROM json_each(@calendarIdsJson)
+                WHERE value = Events.CalendarId
+            )
               AND EndUtc >= @start AND StartUtc <= @end
             ORDER BY StartUtc
             """;
+        cmd.Parameters.AddWithValue(CalendarIdsJsonParameter, JsonSerializer.Serialize(ids));
         cmd.Parameters.AddWithValue("@start", rangeStart.UtcDateTime.ToString("O"));
         cmd.Parameters.AddWithValue("@end", rangeEnd.UtcDateTime.ToString("O"));
 
@@ -64,7 +67,7 @@ public class EventRepository
                 MeetingUrl = @meeting, RawICalendarPayload = @raw, LastSeenUtc = @seen
             """;
         cmd.Parameters.AddWithValue("@id", evt.EventId);
-        cmd.Parameters.AddWithValue("@calId", evt.CalendarId);
+        cmd.Parameters.AddWithValue(CalendarIdParameter, evt.CalendarId);
         cmd.Parameters.AddWithValue("@uid", evt.RemoteUid);
         cmd.Parameters.AddWithValue("@url", (object?)evt.RemoteResourceUrl ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@etag", (object?)evt.ETag ?? DBNull.Value);
@@ -88,16 +91,17 @@ public class EventRepository
         if (uids.Count == 0) return;
 
         using var cmd = _db.Connection.CreateCommand();
-        var paramNames = new List<string>();
-        for (int i = 0; i < uids.Count; i++)
-        {
-            var p = $"@uid{i}";
-            paramNames.Add(p);
-            cmd.Parameters.AddWithValue(p, uids[i]);
-        }
-
-        cmd.CommandText = $"DELETE FROM Events WHERE CalendarId = @calId AND RemoteUid IN ({string.Join(", ", paramNames)})";
-        cmd.Parameters.AddWithValue("@calId", calendarId);
+        cmd.CommandText = $"""
+            DELETE FROM Events
+            WHERE CalendarId = {CalendarIdParameter}
+              AND EXISTS (
+                  SELECT 1
+                  FROM json_each({RemoteUidsJsonParameter})
+                  WHERE value = Events.RemoteUid
+              )
+            """;
+        cmd.Parameters.AddWithValue(CalendarIdParameter, calendarId);
+        cmd.Parameters.AddWithValue(RemoteUidsJsonParameter, JsonSerializer.Serialize(uids));
         await cmd.ExecuteNonQueryAsync();
     }
 
@@ -107,24 +111,25 @@ public class EventRepository
         if (urls.Count == 0) return;
 
         using var cmd = _db.Connection.CreateCommand();
-        var paramNames = new List<string>();
-        for (int i = 0; i < urls.Count; i++)
-        {
-            var p = $"@url{i}";
-            paramNames.Add(p);
-            cmd.Parameters.AddWithValue(p, urls[i]);
-        }
-
-        cmd.CommandText = $"DELETE FROM Events WHERE CalendarId = @calId AND RemoteResourceUrl IN ({string.Join(", ", paramNames)})";
-        cmd.Parameters.AddWithValue("@calId", calendarId);
+        cmd.CommandText = $"""
+            DELETE FROM Events
+            WHERE CalendarId = {CalendarIdParameter}
+              AND EXISTS (
+                  SELECT 1
+                  FROM json_each({ResourceUrlsJsonParameter})
+                  WHERE value = Events.RemoteResourceUrl
+              )
+            """;
+        cmd.Parameters.AddWithValue(CalendarIdParameter, calendarId);
+        cmd.Parameters.AddWithValue(ResourceUrlsJsonParameter, JsonSerializer.Serialize(urls));
         await cmd.ExecuteNonQueryAsync();
     }
 
     public async Task DeleteByCalendarAsync(string calendarId)
     {
         using var cmd = _db.Connection.CreateCommand();
-        cmd.CommandText = "DELETE FROM Events WHERE CalendarId = @calId";
-        cmd.Parameters.AddWithValue("@calId", calendarId);
+        cmd.CommandText = $"DELETE FROM Events WHERE CalendarId = {CalendarIdParameter}";
+        cmd.Parameters.AddWithValue(CalendarIdParameter, calendarId);
         await cmd.ExecuteNonQueryAsync();
     }
 
@@ -138,13 +143,15 @@ public class EventRepository
         Title = reader.GetString(reader.GetOrdinal("Title")),
         Description = reader.IsDBNull(reader.GetOrdinal("Description")) ? null : reader.GetString(reader.GetOrdinal("Description")),
         Location = reader.IsDBNull(reader.GetOrdinal("Location")) ? null : reader.GetString(reader.GetOrdinal("Location")),
-        Start = DateTimeOffset.Parse(reader.GetString(reader.GetOrdinal("StartUtc"))),
-        End = DateTimeOffset.Parse(reader.GetString(reader.GetOrdinal("EndUtc"))),
+        Start = DateTimeOffset.Parse(reader.GetString(reader.GetOrdinal("StartUtc")), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+        End = DateTimeOffset.Parse(reader.GetString(reader.GetOrdinal("EndUtc")), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
         TimeZoneId = reader.IsDBNull(reader.GetOrdinal("TimeZoneId")) ? null : reader.GetString(reader.GetOrdinal("TimeZoneId")),
         IsAllDay = reader.GetInt32(reader.GetOrdinal("IsAllDay")) == 1,
         RecurrenceRule = reader.IsDBNull(reader.GetOrdinal("RecurrenceRule")) ? null : reader.GetString(reader.GetOrdinal("RecurrenceRule")),
         MeetingUrl = reader.IsDBNull(reader.GetOrdinal("MeetingUrl")) ? null : reader.GetString(reader.GetOrdinal("MeetingUrl")),
         RawICalendarPayload = reader.IsDBNull(reader.GetOrdinal("RawICalendarPayload")) ? null : reader.GetString(reader.GetOrdinal("RawICalendarPayload")),
-        LastSeenUtc = reader.IsDBNull(reader.GetOrdinal("LastSeenUtc")) ? null : DateTime.Parse(reader.GetString(reader.GetOrdinal("LastSeenUtc"))),
+        LastSeenUtc = reader.IsDBNull(reader.GetOrdinal("LastSeenUtc"))
+            ? null
+            : DateTime.Parse(reader.GetString(reader.GetOrdinal("LastSeenUtc")), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
     };
 }

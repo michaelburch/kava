@@ -74,21 +74,28 @@ public class CalendarRepository
             DisplayName = reader.GetString(reader.GetOrdinal("DisplayName")),
             CalDavUrl = reader.GetString(reader.GetOrdinal("CalDavUrl")),
             Color = reader.GetString(reader.GetOrdinal("Color")),
-            LocalColor = reader.IsDBNull(reader.GetOrdinal("LocalColor")) ? null : reader.GetString(reader.GetOrdinal("LocalColor")),
+            LocalColor = TryGetOptionalString(reader, "LocalColor"),
             IsReadOnly = reader.GetInt32(reader.GetOrdinal("IsReadOnly")) == 1,
             IsEnabled = reader.GetInt32(reader.GetOrdinal("IsEnabled")) == 1,
             CTag = reader.IsDBNull(reader.GetOrdinal("CTag")) ? null : reader.GetString(reader.GetOrdinal("CTag")),
-            SyncToken = reader.IsDBNull(reader.GetOrdinal("SyncToken")) ? null : reader.GetString(reader.GetOrdinal("SyncToken")),
+            SyncToken = TryGetOptionalString(reader, "SyncToken"),
         };
 
-        // IcsUrl may not exist in older databases before migration runs
-        try
-        {
-            var icsOrd = reader.GetOrdinal("IcsUrl");
-            cal.IcsUrl = reader.IsDBNull(icsOrd) ? null : reader.GetString(icsOrd);
-        }
-        catch (ArgumentOutOfRangeException) { }
+        cal.IcsUrl = TryGetOptionalString(reader, "IcsUrl");
 
         return cal;
+    }
+
+    private static string? TryGetOptionalString(SqliteDataReader reader, string columnName)
+    {
+        try
+        {
+            var ordinal = reader.GetOrdinal(columnName);
+            return reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return null;
+        }
     }
 }

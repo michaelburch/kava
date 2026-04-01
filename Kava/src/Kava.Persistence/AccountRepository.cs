@@ -1,3 +1,4 @@
+using System.Globalization;
 using Kava.Core.Models;
 using Microsoft.Data.Sqlite;
 
@@ -77,7 +78,9 @@ public class AccountRepository
         ServerBaseUrl = reader.GetString(reader.GetOrdinal("ServerBaseUrl")),
         Username = reader.GetString(reader.GetOrdinal("Username")),
         CredentialReference = reader.GetString(reader.GetOrdinal("CredentialReference")),
-        LastSyncUtc = reader.IsDBNull(reader.GetOrdinal("LastSyncUtc")) ? null : DateTime.Parse(reader.GetString(reader.GetOrdinal("LastSyncUtc"))),
+        LastSyncUtc = reader.IsDBNull(reader.GetOrdinal("LastSyncUtc"))
+            ? null
+            : DateTime.Parse(reader.GetString(reader.GetOrdinal("LastSyncUtc")), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
         SyncToken = reader.IsDBNull(reader.GetOrdinal("SyncToken")) ? null : reader.GetString(reader.GetOrdinal("SyncToken")),
         IsEnabled = reader.GetInt32(reader.GetOrdinal("IsEnabled")) == 1,
         SupportsCalendars = reader.GetInt32(reader.GetOrdinal("SupportsCalendars")) == 1,

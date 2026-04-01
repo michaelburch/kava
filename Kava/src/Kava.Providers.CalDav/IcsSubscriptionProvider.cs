@@ -5,7 +5,7 @@ namespace Kava.Providers.CalDav;
 /// <summary>
 /// Fetches and parses read-only ICS calendar feeds (webcal:// or https:// URLs).
 /// </summary>
-public sealed class IcsSubscriptionProvider
+public static class IcsSubscriptionProvider
 {
     private static readonly HttpClient SharedClient = new()
     {
@@ -17,7 +17,7 @@ public sealed class IcsSubscriptionProvider
     /// Uses ETag/Last-Modified for conditional requests when available.
     /// Returns null if the feed has not changed (304 Not Modified).
     /// </summary>
-    public async Task<IcsSubscriptionResult?> FetchAsync(
+    public static async Task<IcsSubscriptionResult?> FetchAsync(
         Calendar calendar, CancellationToken ct = default)
     {
         var url = NormalizeUrl(calendar.IcsUrl!);

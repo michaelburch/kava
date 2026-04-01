@@ -4,7 +4,11 @@ namespace Kava.Persistence;
 
 public class KavaDatabase : IDisposable
 {
+    private const string CalendarsTableName = "Calendars";
+    private const string TextColumnType = "TEXT";
+
     private readonly SqliteConnection _connection;
+    private bool _disposed;
 
     public KavaDatabase(string databasePath)
     {
@@ -116,16 +120,16 @@ public class KavaDatabase : IDisposable
     private void RunMigrations()
     {
         // Add SyncToken column to Calendars if it doesn't exist yet
-        AddColumnIfMissing("Calendars", "SyncToken", "TEXT");
+        AddCalendarColumnIfMissing("SyncToken");
 
         // Remove duplicate events from before the unique index fix
         DeduplicateEvents();
 
         // Add LocalColor column to Calendars for user color overrides
-        AddColumnIfMissing("Calendars", "LocalColor", "TEXT");
+        AddCalendarColumnIfMissing("LocalColor");
 
         // Add IcsUrl column for ICS subscription calendars
-        AddColumnIfMissing("Calendars", "IcsUrl", "TEXT");
+        AddCalendarColumnIfMissing("IcsUrl");
 
         // Create unique index after dedup so it doesn't fail on corrupt data
         using var idx = _connection.CreateCommand();
@@ -150,10 +154,13 @@ public class KavaDatabase : IDisposable
         cmd.ExecuteNonQuery();
     }
 
-    private void AddColumnIfMissing(string table, string column, string type)
+    private void AddCalendarColumnIfMissing(string column)
     {
+        var tableInfoSql = GetCalendarTableInfoSql(column);
+        var addColumnSql = GetAddCalendarColumnSql(column);
+
         using var cmd = _connection.CreateCommand();
-        cmd.CommandText = $"PRAGMA table_info({table})";
+        cmd.CommandText = tableInfoSql;
         using var reader = cmd.ExecuteReader();
         while (reader.Read())
         {
@@ -163,12 +170,38 @@ public class KavaDatabase : IDisposable
         reader.Close();
 
         using var alter = _connection.CreateCommand();
-        alter.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {type}";
+        alter.CommandText = addColumnSql;
         alter.ExecuteNonQuery();
     }
 
+    private static string GetCalendarTableInfoSql(string column) => column switch
+    {
+        "SyncToken" or "LocalColor" or "IcsUrl" => $"PRAGMA table_info({CalendarsTableName})",
+        _ => throw new InvalidOperationException($"Unsupported calendar migration column '{column}'.")
+    };
+
+    private static string GetAddCalendarColumnSql(string column) => column switch
+    {
+        "SyncToken" => $"ALTER TABLE {CalendarsTableName} ADD COLUMN SyncToken {TextColumnType}",
+        "LocalColor" => $"ALTER TABLE {CalendarsTableName} ADD COLUMN LocalColor {TextColumnType}",
+        "IcsUrl" => $"ALTER TABLE {CalendarsTableName} ADD COLUMN IcsUrl {TextColumnType}",
+        _ => throw new InvalidOperationException($"Unsupported calendar migration column '{column}'.")
+    };
+
     public void Dispose()
     {
-        _connection.Dispose();
+        Dispose(disposing: true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (_disposed)
+            return;
+
+        if (disposing)
+            _connection.Dispose();
+
+        _disposed = true;
     }
 }

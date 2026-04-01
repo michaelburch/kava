@@ -9,9 +9,25 @@ namespace Kava.Providers.CalDav;
 
 public class CalDavProvider : ICalendarProvider
 {
+    private const string ApplicationXmlMediaType = "application/xml";
+    private const string CalendarDataElementName = "calendar-data";
+    private const string GetEtagElementName = "getetag";
+    private const string PropfindElementName = "propfind";
+    private const string PropfindMethodName = "PROPFIND";
+    private const string SyncTokenElementName = "sync-token";
+    private const string CurrentUserPrincipalElementName = "current-user-principal";
+    private const string HrefElementName = "href";
+    private const string CalendarHomeSetElementName = "calendar-home-set";
+    private const string CalendarServerHost = "calendarserver.org";
+    private const string AppleNamespaceHost = "apple.com";
+    private const string AppleNamespacePath = "/ns/ical/";
+    private const string CalendarServerNamespacePath = "/ns/";
+    private const string HttpsScheme = "https";
+
     private static readonly XNamespace DavNs = "DAV:";
     private static readonly XNamespace CalDavNs = "urn:ietf:params:xml:ns:caldav";
-    private static readonly XNamespace AppleNs = "http://apple.com/ns/ical/";
+    private static readonly XNamespace AppleNs = BuildXmlNamespace(AppleNamespaceHost, AppleNamespacePath);
+    private static readonly XNamespace CalendarServerNs = BuildXmlNamespace(CalendarServerHost, CalendarServerNamespacePath);
 
     private readonly HttpClient _httpClient;
 
@@ -22,6 +38,8 @@ public class CalDavProvider : ICalendarProvider
 
     public static HttpClient CreateHttpClient(Account account, string password)
     {
+        ValidateSecureServerUrl(account.ServerBaseUrl);
+
         var handler = new HttpClientHandler();
         var client = new HttpClient(handler)
         {
@@ -58,8 +76,8 @@ public class CalDavProvider : ICalendarProvider
                 new XAttribute(XNamespace.Xmlns + "d", DavNs),
                 new XAttribute(XNamespace.Xmlns + "c", CalDavNs),
                 new XElement(DavNs + "prop",
-                    new XElement(DavNs + "getetag"),
-                    new XElement(CalDavNs + "calendar-data")),
+                    new XElement(DavNs + GetEtagElementName),
+                    new XElement(CalDavNs + CalendarDataElementName)),
                 new XElement(CalDavNs + "filter",
                     new XElement(CalDavNs + "comp-filter",
                         new XAttribute("name", "VCALENDAR"),
@@ -134,15 +152,15 @@ public class CalDavProvider : ICalendarProvider
             new XElement(DavNs + "sync-collection",
                 new XAttribute(XNamespace.Xmlns + "d", DavNs),
                 new XAttribute(XNamespace.Xmlns + "c", CalDavNs),
-                new XElement(DavNs + "sync-token", syncToken),
+                new XElement(DavNs + SyncTokenElementName, syncToken),
                 new XElement(DavNs + "sync-level", "1"),
                 new XElement(DavNs + "prop",
-                    new XElement(DavNs + "getetag"),
-                    new XElement(CalDavNs + "calendar-data"))));
+                    new XElement(DavNs + GetEtagElementName),
+                    new XElement(CalDavNs + CalendarDataElementName))));
 
         var request = new HttpRequestMessage(new HttpMethod("REPORT"), calendar.CalDavUrl);
         request.Headers.Add("Depth", "1");
-        request.Content = new StringContent(requestBody.ToString(), Encoding.UTF8, "application/xml");
+        request.Content = new StringContent(requestBody.ToString(), Encoding.UTF8, ApplicationXmlMediaType);
 
         var response = await _httpClient.SendAsync(request, ct);
 
@@ -176,7 +194,7 @@ public class CalDavProvider : ICalendarProvider
             }
 
             // Changed/new resource — parse calendar data
-            var calData = resp.Descendants(CalDavNs + "calendar-data").FirstOrDefault()?.Value;
+            var calData = resp.Descendants(CalDavNs + CalendarDataElementName).FirstOrDefault()?.Value;
             if (calData == null) continue;
 
             var etag = resp.Descendants(DavNs + "getetag").FirstOrDefault()?.Value;
@@ -191,7 +209,7 @@ public class CalDavProvider : ICalendarProvider
             }
         }
 
-        var newToken = doc.Descendants(DavNs + "sync-token").LastOrDefault()?.Value;
+        var newToken = doc.Descendants(DavNs + SyncTokenElementName).LastOrDefault()?.Value;
 
         return new SyncResult<CalendarEvent>
         {
@@ -207,16 +225,16 @@ public class CalDavProvider : ICalendarProvider
     private async Task<string?> GetCTagAsync(string calendarUrl, CancellationToken ct)
     {
         var body = new XDocument(
-            new XElement(DavNs + "propfind",
-                new XAttribute(XNamespace.Xmlns + "cs", "http://calendarserver.org/ns/"),
+            new XElement(DavNs + PropfindElementName,
+                new XAttribute(XNamespace.Xmlns + "cs", CalendarServerNs.NamespaceName),
                 new XElement(DavNs + "prop",
-                    new XElement(XNamespace.Get("http://calendarserver.org/ns/") + "getctag"))));
+                    new XElement(CalendarServerNs + "getctag"))));
 
         var response = await SendPropfindAsync(calendarUrl, body, depth: 0, ct);
         if (response == null) return null;
 
         return response
-            .Descendants(XNamespace.Get("http://calendarserver.org/ns/") + "getctag")
+            .Descendants(CalendarServerNs + "getctag")
             .FirstOrDefault()?.Value;
     }
 
@@ -226,31 +244,31 @@ public class CalDavProvider : ICalendarProvider
     private async Task<string?> GetSyncTokenAsync(string calendarUrl, CancellationToken ct)
     {
         var body = new XDocument(
-            new XElement(DavNs + "propfind",
+            new XElement(DavNs + PropfindElementName,
                 new XElement(DavNs + "prop",
-                    new XElement(DavNs + "sync-token"))));
+                    new XElement(DavNs + SyncTokenElementName))));
 
         var response = await SendPropfindAsync(calendarUrl, body, depth: 0, ct);
         if (response == null) return null;
 
         return response
-            .Descendants(DavNs + "sync-token")
+            .Descendants(DavNs + SyncTokenElementName)
             .FirstOrDefault()?.Value;
     }
 
     private async Task<string?> DiscoverPrincipalAsync(string baseUrl, CancellationToken ct)
     {
         var body = new XDocument(
-            new XElement(DavNs + "propfind",
+            new XElement(DavNs + PropfindElementName,
                 new XElement(DavNs + "prop",
-                    new XElement(DavNs + "current-user-principal"))));
+                    new XElement(DavNs + CurrentUserPrincipalElementName))));
 
         var response = await SendPropfindAsync(baseUrl, body, depth: 0, ct);
         if (response == null) return null;
 
         var href = response
-            .Descendants(DavNs + "current-user-principal")
-            .Descendants(DavNs + "href")
+            .Descendants(DavNs + CurrentUserPrincipalElementName)
+            .Descendants(DavNs + HrefElementName)
             .FirstOrDefault()?.Value;
 
         return href != null ? ResolveUrl(baseUrl, href) : null;
@@ -259,27 +277,36 @@ public class CalDavProvider : ICalendarProvider
     private async Task<string?> DiscoverCalendarHomeAsync(string principalUrl, CancellationToken ct)
     {
         var body = new XDocument(
-            new XElement(DavNs + "propfind",
+            new XElement(DavNs + PropfindElementName,
                 new XAttribute(XNamespace.Xmlns + "c", CalDavNs),
                 new XElement(DavNs + "prop",
-                    new XElement(CalDavNs + "calendar-home-set"))));
+                    new XElement(CalDavNs + CalendarHomeSetElementName))));
 
         var response = await SendPropfindAsync(principalUrl, body, depth: 0, ct);
         if (response == null) return null;
 
         var href = response
-            .Descendants(CalDavNs + "calendar-home-set")
-            .Descendants(DavNs + "href")
+            .Descendants(CalDavNs + CalendarHomeSetElementName)
+            .Descendants(DavNs + HrefElementName)
             .FirstOrDefault()?.Value;
 
         return href != null ? ResolveUrl(principalUrl, href) : null;
     }
 
+    private static void ValidateSecureServerUrl(string serverUrl)
+    {
+        if (!Uri.TryCreate(serverUrl, UriKind.Absolute, out var uri) || !string.Equals(uri.Scheme, HttpsScheme, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("CalDAV server URL must use HTTPS.");
+    }
+
+    private static string BuildXmlNamespace(string host, string path) =>
+        new UriBuilder(Uri.UriSchemeHttp, host) { Path = path }.Uri.AbsoluteUri;
+
     private async Task<IReadOnlyList<Calendar>> ListCalendarsAsync(
         string accountId, string calendarHomeUrl, CancellationToken ct)
     {
         var body = new XDocument(
-            new XElement(DavNs + "propfind",
+            new XElement(DavNs + PropfindElementName,
                 new XAttribute(XNamespace.Xmlns + "c", CalDavNs),
                 new XAttribute(XNamespace.Xmlns + "a", AppleNs),
                 new XElement(DavNs + "prop",
@@ -328,15 +355,15 @@ public class CalDavProvider : ICalendarProvider
         return calendars;
     }
 
-    private IReadOnlyList<CalendarEvent> ParseEventsFromMultistatus(XDocument doc, string calendarId)
+    private static List<CalendarEvent> ParseEventsFromMultistatus(XDocument doc, string calendarId)
     {
         var events = new List<CalendarEvent>();
 
         foreach (var response in doc.Descendants(DavNs + "response"))
         {
             var href = response.Element(DavNs + "href")?.Value;
-            var etag = response.Descendants(DavNs + "getetag").FirstOrDefault()?.Value;
-            var calData = response.Descendants(CalDavNs + "calendar-data").FirstOrDefault()?.Value;
+            var etag = response.Descendants(DavNs + GetEtagElementName).FirstOrDefault()?.Value;
+            var calData = response.Descendants(CalDavNs + CalendarDataElementName).FirstOrDefault()?.Value;
 
             if (calData == null) continue;
 
@@ -357,9 +384,9 @@ public class CalDavProvider : ICalendarProvider
     private async Task<XDocument?> SendPropfindAsync(
         string url, XDocument body, int depth, CancellationToken ct)
     {
-        var request = new HttpRequestMessage(new HttpMethod("PROPFIND"), url);
+        var request = new HttpRequestMessage(new HttpMethod(PropfindMethodName), url);
         request.Headers.Add("Depth", depth.ToString());
-        request.Content = new StringContent(body.ToString(), Encoding.UTF8, "application/xml");
+        request.Content = new StringContent(body.ToString(), Encoding.UTF8, ApplicationXmlMediaType);
 
         var response = await _httpClient.SendAsync(request, ct);
         if (!response.IsSuccessStatusCode && response.StatusCode != HttpStatusCode.MultiStatus)
@@ -374,7 +401,7 @@ public class CalDavProvider : ICalendarProvider
     {
         var request = new HttpRequestMessage(new HttpMethod("REPORT"), url);
         request.Headers.Add("Depth", "1");
-        request.Content = new StringContent(body.ToString(), Encoding.UTF8, "application/xml");
+        request.Content = new StringContent(body.ToString(), Encoding.UTF8, ApplicationXmlMediaType);
 
         var response = await _httpClient.SendAsync(request, ct);
         if (!response.IsSuccessStatusCode && response.StatusCode != HttpStatusCode.MultiStatus)
@@ -411,7 +438,7 @@ public class CalDavProvider : ICalendarProvider
         System.Diagnostics.Debug.WriteLine($"[PROPPATCH] Body: {body}");
 
         var request = new HttpRequestMessage(new HttpMethod("PROPPATCH"), calDavUrl);
-        request.Content = new StringContent(body.ToString(), Encoding.UTF8, "application/xml");
+        request.Content = new StringContent(body.ToString(), Encoding.UTF8, ApplicationXmlMediaType);
 
         var response = await _httpClient.SendAsync(request, ct);
         var responseBody = await response.Content.ReadAsStringAsync(ct);
