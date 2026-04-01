@@ -11,9 +11,6 @@ namespace Kava.Desktop;
 
 public class App : Application
 {
-    private TrayIconManager? _trayManager;
-    private KavaDatabase? _database;
-
     public static CalDavAccountService? AccountService { get; private set; }
     public static SyncService? Sync { get; private set; }
 
@@ -32,14 +29,14 @@ public class App : Application
             InitializeServices();
 #endif
 
-            _trayManager = new TrayIconManager(desktop);
-            _trayManager.Initialize();
+            var trayManager = new TrayIconManager(desktop);
+            trayManager.Initialize();
         }
 
         base.OnFrameworkInitializationCompleted();
     }
 
-    private void InitializeServices()
+    private static void InitializeServices()
     {
         var appDataPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -47,12 +44,12 @@ public class App : Application
         Directory.CreateDirectory(appDataPath);
 
         var dbPath = Path.Combine(appDataPath, "kava.db");
-        _database = new KavaDatabase(dbPath);
+        var database = new KavaDatabase(dbPath);
 
 #pragma warning disable CA1416 // Windows-only desktop app
         var credentialStore = new FileCredentialStore(appDataPath);
 #pragma warning restore CA1416
-        AccountService = new CalDavAccountService(_database, credentialStore);
+        AccountService = new CalDavAccountService(database, credentialStore);
 
         Sync = new SyncService(AccountService, TimeSpan.FromMinutes(15));
         Sync.Start();

@@ -11,7 +11,6 @@ namespace Kava.Desktop;
 /// </summary>
 public sealed class CalDavAccountService
 {
-    private readonly KavaDatabase _db;
     private readonly AccountRepository _accounts;
     private readonly CalendarRepository _calendars;
     private readonly EventRepository _events;
@@ -26,7 +25,6 @@ public sealed class CalDavAccountService
         KavaDatabase db,
         ICredentialStore credentials)
     {
-        _db = db;
         _accounts = new AccountRepository(db);
         _calendars = new CalendarRepository(db);
         _events = new EventRepository(db);
@@ -46,11 +44,14 @@ public sealed class CalDavAccountService
         string displayName, string serverUrl, string username, string password,
         CancellationToken ct = default)
     {
+        if (!DesktopInputNormalizer.TryNormalizeCalDavServerUrl(serverUrl, out var normalizedServerUrl, out var error))
+            return error;
+
         var account = new Account
         {
             ProviderType = ProviderType.CalDav,
             DisplayName = displayName,
-            ServerBaseUrl = serverUrl.TrimEnd('/'),
+            ServerBaseUrl = normalizedServerUrl,
             Username = username,
         };
 
@@ -99,7 +100,7 @@ public sealed class CalDavAccountService
     /// Returns (successCount, errorMessages).
     /// </summary>
     public async Task<(int synced, List<string> errors)> SyncAllAsync(
-        CancellationToken ct = default, bool forceFullSync = false)
+        bool forceFullSync = false, CancellationToken ct = default)
     {
         var accounts = await _accounts.GetAllAsync();
         var synced = 0;
@@ -107,98 +108,11 @@ public sealed class CalDavAccountService
 
         foreach (var account in accounts.Where(a => a.IsEnabled))
         {
-            if (account.ProviderType == ProviderType.IcsSubscription)
-            {
-                // Sync ICS subscription calendars
-                try
-                {
-                    var calendars = await _calendars.GetByAccountAsync(account.AccountId);
-                    var icsProvider = new IcsSubscriptionProvider();
-                    foreach (var cal in calendars.Where(c => c.IsEnabled && !string.IsNullOrEmpty(c.IcsUrl)))
-                    {
-                        var result = await icsProvider.FetchAsync(cal, ct);
-                        if (result == null) { synced++; continue; } // 304 Not Modified
-
-                        // Replace all events for this subscription calendar
-                        await _events.DeleteByCalendarAsync(cal.CalendarId);
-                        foreach (var evt in result.Events)
-                            await _events.UpsertAsync(evt);
-
-                        if (result.NewETag != null)
-                            cal.SyncToken = result.NewETag;
-                        await _calendars.UpsertAsync(cal);
-                        synced++;
-                    }
-                    account.LastSyncUtc = DateTime.UtcNow;
-                    await _accounts.UpsertAsync(account);
-                }
-                catch (Exception ex)
-                {
-                    errors.Add($"{account.DisplayName}: {ex.Message}");
-                }
-                continue;
-            }
-
-            var password = await _credentials.GetCredentialAsync(account.AccountId);
-            if (password == null)
-            {
-                errors.Add($"{account.DisplayName}: No stored credentials.");
-                continue;
-            }
-
             try
             {
-                using var httpClient = CalDavProvider.CreateHttpClient(account, password);
-                var provider = new CalDavProvider(httpClient);
-
-                // Re-discover calendars to pick up server-side changes (color, name)
-                var existingCalendars = await _calendars.GetByAccountAsync(account.AccountId);
-                var serverCalendars = await provider.DiscoverCalendarsAsync(account, ct);
-                var existingMap = existingCalendars.ToDictionary(c => c.CalendarId);
-                foreach (var serverCal in serverCalendars)
-                {
-                    if (existingMap.TryGetValue(serverCal.CalendarId, out var existing))
-                    {
-                        if (!string.Equals(existing.Color, serverCal.Color, StringComparison.OrdinalIgnoreCase))
-                            Debug.WriteLine($"[Sync] Color changed on server for '{existing.DisplayName}': {existing.Color} → {serverCal.Color}");
-                        // Update server-managed properties, preserve local settings (LocalColor, IsEnabled)
-                        existing.DisplayName = serverCal.DisplayName;
-                        existing.Color = serverCal.Color;
-                        existing.IsReadOnly = serverCal.IsReadOnly;
-                        // LocalColor is intentionally NOT overwritten — it's a user override
-                        await _calendars.UpsertAsync(existing);
-                    }
-                    else
-                    {
-                        // New calendar discovered on the server
-                        await _calendars.UpsertAsync(serverCal);
-                    }
-                }
-
-                var calendars = await _calendars.GetByAccountAsync(account.AccountId);
-                foreach (var cal in calendars.Where(c => c.IsEnabled))
-                {
-                    var syncToken = forceFullSync ? null : cal.SyncToken;
-                    if (forceFullSync)
-                        cal.CTag = null;
-
-                    var result = await provider.SyncEventsAsync(cal, syncToken, ct);
-                    foreach (var evt in result.Changed)
-                        await _events.UpsertAsync(evt);
-
-                    // Sync-collection returns resource hrefs for deletions
-                    if (result.DeletedUids.Count > 0)
-                        await _events.DeleteByRemoteUrlsAsync(cal.CalendarId, result.DeletedUids);
-
-                    // Persist sync-token and CTag for next sync
-                    if (result.NewSyncToken != null)
-                        cal.SyncToken = result.NewSyncToken;
-                    if (result.NewCTag != null)
-                        cal.CTag = result.NewCTag;
-                    await _calendars.UpsertAsync(cal);
-
-                    synced++;
-                }
+                synced += account.ProviderType == ProviderType.IcsSubscription
+                    ? await SyncIcsAccountAsync(account, ct)
+                    : await SyncCalDavAccountAsync(account, forceFullSync, ct);
 
                 account.LastSyncUtc = DateTime.UtcNow;
                 await _accounts.UpsertAsync(account);
@@ -210,6 +124,99 @@ public sealed class CalDavAccountService
         }
 
         return (synced, errors);
+    }
+
+    private async Task<int> SyncIcsAccountAsync(Account account, CancellationToken ct)
+    {
+        var calendars = await _calendars.GetByAccountAsync(account.AccountId);
+        var synced = 0;
+
+        foreach (var cal in calendars.Where(c => c.IsEnabled && !string.IsNullOrEmpty(c.IcsUrl)))
+        {
+            var result = await IcsSubscriptionProvider.FetchAsync(cal, ct);
+            if (result == null)
+            {
+                synced++;
+                continue;
+            }
+
+            await _events.DeleteByCalendarAsync(cal.CalendarId);
+            foreach (var evt in result.Events)
+                await _events.UpsertAsync(evt);
+
+            if (result.NewETag != null)
+                cal.SyncToken = result.NewETag;
+
+            await _calendars.UpsertAsync(cal);
+            synced++;
+        }
+
+        return synced;
+    }
+
+    private async Task<int> SyncCalDavAccountAsync(Account account, bool forceFullSync, CancellationToken ct)
+    {
+        var password = await _credentials.GetCredentialAsync(account.AccountId)
+            ?? throw new InvalidOperationException("No stored credentials.");
+
+        using var httpClient = CalDavProvider.CreateHttpClient(account, password);
+        var provider = new CalDavProvider(httpClient);
+
+        await UpdateDiscoveredCalendarsAsync(account, provider, ct);
+        return await SyncEnabledCalendarsAsync(account.AccountId, provider, forceFullSync, ct);
+    }
+
+    private async Task UpdateDiscoveredCalendarsAsync(Account account, CalDavProvider provider, CancellationToken ct)
+    {
+        var existingCalendars = await _calendars.GetByAccountAsync(account.AccountId);
+        var existingMap = existingCalendars.ToDictionary(c => c.CalendarId);
+        var serverCalendars = await provider.DiscoverCalendarsAsync(account, ct);
+
+        foreach (var serverCal in serverCalendars)
+        {
+            if (!existingMap.TryGetValue(serverCal.CalendarId, out var existing))
+            {
+                await _calendars.UpsertAsync(serverCal);
+                continue;
+            }
+
+            if (!string.Equals(existing.Color, serverCal.Color, StringComparison.OrdinalIgnoreCase))
+                Debug.WriteLine($"[Sync] Color changed on server for '{existing.DisplayName}': {existing.Color} → {serverCal.Color}");
+
+            existing.DisplayName = serverCal.DisplayName;
+            existing.Color = serverCal.Color;
+            existing.IsReadOnly = serverCal.IsReadOnly;
+            await _calendars.UpsertAsync(existing);
+        }
+    }
+
+    private async Task<int> SyncEnabledCalendarsAsync(string accountId, CalDavProvider provider, bool forceFullSync, CancellationToken ct)
+    {
+        var synced = 0;
+        var calendars = await _calendars.GetByAccountAsync(accountId);
+        foreach (var cal in calendars.Where(c => c.IsEnabled))
+        {
+            var syncToken = forceFullSync ? null : cal.SyncToken;
+            if (forceFullSync)
+                cal.CTag = null;
+
+            var result = await provider.SyncEventsAsync(cal, syncToken, ct);
+            foreach (var evt in result.Changed)
+                await _events.UpsertAsync(evt);
+
+            if (result.DeletedUids.Count > 0)
+                await _events.DeleteByRemoteUrlsAsync(cal.CalendarId, result.DeletedUids);
+
+            if (result.NewSyncToken != null)
+                cal.SyncToken = result.NewSyncToken;
+            if (result.NewCTag != null)
+                cal.CTag = result.NewCTag;
+
+            await _calendars.UpsertAsync(cal);
+            synced++;
+        }
+
+        return synced;
     }
 
     /// <summary>
@@ -234,19 +241,7 @@ public sealed class CalDavAccountService
 
         var dbEvents = await _events.GetByDateRangeAsync(calIds, start, end);
 
-        var result = new Dictionary<DateOnly, List<EventItem>>();
-        foreach (var evt in dbEvents)
-        {
-            var date = DateOnly.FromDateTime(evt.Start.LocalDateTime);
-            var item = MapToEventItem(evt, colorMap.GetValueOrDefault(evt.CalendarId, "#0078D4"));
-
-            if (!result.TryGetValue(date, out var list))
-            {
-                list = [];
-                result[date] = list;
-            }
-            list.Add(item);
-        }
+        var result = DesktopEventMapper.BuildEventLookup(dbEvents, colorMap);
 
         _cachedEvents = result;
         _cacheStart = rangeStart;
@@ -278,14 +273,8 @@ public sealed class CalDavAccountService
     public async Task<string?> AddSubscriptionAsync(
         string displayName, string icsUrl, string color, CancellationToken ct = default)
     {
-        // Normalize webcal:// to https://
-        var normalizedUrl = icsUrl.Trim();
-        if (normalizedUrl.StartsWith("webcal://", StringComparison.OrdinalIgnoreCase))
-            normalizedUrl = "https://" + normalizedUrl[9..];
-
-        if (!Uri.TryCreate(normalizedUrl, UriKind.Absolute, out var uri)
-            || (uri.Scheme != "https" && uri.Scheme != "http"))
-            return "Please enter a valid URL (https:// or webcal://).";
+        if (!DesktopInputNormalizer.TryNormalizeSubscriptionUrl(icsUrl, out var normalizedUrl, out var error))
+            return error;
 
         try
         {
@@ -311,8 +300,7 @@ public sealed class CalDavAccountService
             };
 
             // Validate by doing the initial fetch
-            var provider = new IcsSubscriptionProvider();
-            var result = await provider.FetchAsync(calendar, ct);
+            var result = await IcsSubscriptionProvider.FetchAsync(calendar, ct);
             if (result == null)
                 return "The URL did not return any calendar data.";
 
@@ -357,36 +345,8 @@ public sealed class CalDavAccountService
 
             // Try to push the color to the server
             var password = await _credentials.GetCredentialAsync(account.AccountId);
-            if (password != null && !cal.IsReadOnly)
-            {
-                try
-                {
-                    using var httpClient = CalDavProvider.CreateHttpClient(account, password);
-                    var provider = new CalDavProvider(httpClient);
-                    Debug.WriteLine($"[Color] PROPPATCH sending color: {color}");
-                    if (await provider.SetCalendarColorAsync(cal.CalDavUrl, color))
-                    {
-                        // Verify the server actually applied the change
-                        var serverCalendars = await provider.DiscoverCalendarsAsync(account, default);
-                        var updated = serverCalendars.FirstOrDefault(c => c.CalendarId == cal.CalendarId);
-                        Debug.WriteLine($"[Color] Server returned color after PROPPATCH: {updated?.Color ?? "(calendar not found)"}");
-                        if (updated != null && string.Equals(updated.Color, color, StringComparison.OrdinalIgnoreCase))
-                        {
-                            // Server accepted — update server color and clear local override
-                            Debug.WriteLine($"[Color] Verified — server color matches");
-                            cal.Color = color;
-                            cal.LocalColor = null;
-                            await _calendars.UpsertAsync(cal);
-                            return;
-                        }
-                        Debug.WriteLine($"[Color] Server did NOT apply color — storing as local override");
-                    }
-                }
-                catch
-                {
-                    // Server push failed — fall through to local-only override
-                }
-            }
+            if (password != null && !cal.IsReadOnly && await TryPushCalendarColorAsync(account, cal, color, password))
+                return;
 
             // Server push failed or read-only calendar — store as local override
             cal.LocalColor = color;
@@ -395,11 +355,39 @@ public sealed class CalDavAccountService
         }
     }
 
+    private async Task<bool> TryPushCalendarColorAsync(Account account, Calendar cal, string color, string password)
+    {
+        try
+        {
+            using var httpClient = CalDavProvider.CreateHttpClient(account, password);
+            var provider = new CalDavProvider(httpClient);
+            Debug.WriteLine($"[Color] PROPPATCH sending color: {color}");
+            if (!await provider.SetCalendarColorAsync(cal.CalDavUrl, color))
+                return false;
+
+            var serverCalendars = await provider.DiscoverCalendarsAsync(account, default);
+            var updated = serverCalendars.FirstOrDefault(c => c.CalendarId == cal.CalendarId);
+            Debug.WriteLine($"[Color] Server returned color after PROPPATCH: {updated?.Color ?? "(calendar not found)"}");
+            if (updated == null || !string.Equals(updated.Color, color, StringComparison.OrdinalIgnoreCase))
+            {
+                Debug.WriteLine("[Color] Server did NOT apply color — storing as local override");
+                return false;
+            }
+
+            Debug.WriteLine("[Color] Verified — server color matches");
+            cal.Color = color;
+            cal.LocalColor = null;
+            await _calendars.UpsertAsync(cal);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public async Task UpdateCalendarEnabledAsync(string calendarId, bool enabled)
     {
-        // Read, modify, write
-        var allCals = await _calendars.GetEnabledAsync();
-        // We need all calendars not just enabled, get from any account
         var accounts = await _accounts.GetAllAsync();
         foreach (var account in accounts)
         {
@@ -414,29 +402,4 @@ public sealed class CalDavAccountService
         }
     }
 
-    private static EventItem MapToEventItem(CalendarEvent evt, string color)
-    {
-        string timeRange;
-        if (evt.IsAllDay)
-        {
-            timeRange = "All day";
-        }
-        else
-        {
-            var start = evt.Start.LocalDateTime;
-            var end = evt.End.LocalDateTime;
-            timeRange = $"{start:h:mm tt} \u2013 {end:h:mm tt}";
-        }
-
-        return new EventItem
-        {
-            Title = evt.Title,
-            TimeRange = timeRange,
-            Subtitle = evt.Location,
-            CalendarId = evt.CalendarId,
-            CalendarColor = color,
-            IsAllDay = evt.IsAllDay,
-            MeetingUrl = evt.MeetingUrl,
-        };
-    }
 }

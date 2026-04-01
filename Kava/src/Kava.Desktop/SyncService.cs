@@ -10,8 +10,9 @@ namespace Kava.Desktop;
 /// </summary>
 public sealed class SyncService : IDisposable
 {
+    private static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(30);
     private readonly CalDavAccountService _accountService;
-    private readonly TimeSpan _interval;
+    private readonly int _ticksPerSync;
     private Timer? _timer;
     private int _running;
     private int _syncRequested;
@@ -22,13 +23,17 @@ public sealed class SyncService : IDisposable
     public SyncService(CalDavAccountService accountService, TimeSpan interval)
     {
         _accountService = accountService;
-        _interval = interval;
+        _ticksPerSync = Math.Max(1, (int)Math.Round(interval.TotalSeconds / TickInterval.TotalSeconds, MidpointRounding.AwayFromZero));
     }
 
     public void Start()
     {
         // Check every 30 seconds; run sync if requested or on interval
-        _timer ??= new Timer(OnTick, null, TimeSpan.Zero, TimeSpan.FromSeconds(30));
+        _timer ??= new Timer(static state =>
+        {
+            if (state is SyncService service)
+                _ = service.OnTickAsync();
+        }, this, TimeSpan.Zero, TickInterval);
     }
 
     public void Stop()
@@ -48,15 +53,15 @@ public sealed class SyncService : IDisposable
     public async Task SyncNowAsync(CancellationToken ct = default)
     {
         Interlocked.Exchange(ref _syncRequested, 0);
-        await RunSyncCycleAsync(ct, forceFullSync: true);
+        await RunSyncCycleAsync(forceFullSync: true, ct);
     }
 
     private int _tickCount;
 
-    private async void OnTick(object? state)
+    private async Task OnTickAsync()
     {
         var requested = Interlocked.Exchange(ref _syncRequested, 0) == 1;
-        var intervalElapsed = Interlocked.Increment(ref _tickCount) % (_interval.TotalSeconds / 30) == 0;
+        var intervalElapsed = Interlocked.Increment(ref _tickCount) % _ticksPerSync == 0;
 
         if (!requested && !intervalElapsed)
             return;
@@ -71,14 +76,14 @@ public sealed class SyncService : IDisposable
         }
     }
 
-    private async Task RunSyncCycleAsync(CancellationToken ct = default, bool forceFullSync = false)
+    private async Task RunSyncCycleAsync(bool forceFullSync = false, CancellationToken ct = default)
     {
         if (Interlocked.CompareExchange(ref _running, 1, 0) != 0)
             return;
 
         try
         {
-            var (synced, _) = await _accountService.SyncAllAsync(ct, forceFullSync);
+            var (synced, _) = await _accountService.SyncAllAsync(forceFullSync, ct);
             await RefreshCacheAsync();
             if (synced > 0)
                 SyncCompleted?.Invoke();

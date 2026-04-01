@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,13 +13,14 @@ using Avalonia.Threading;
 
 namespace Kava.Desktop;
 
-public class TrayIconManager : IDisposable
+public sealed class TrayIconManager : IDisposable
 {
     private readonly IClassicDesktopStyleApplicationLifetime _lifetime;
     private TrayIcon? _trayIcon;
     private FlyoutWindow? _flyoutWindow;
     private MainWindow? _mainWindow;
     private bool _toggling;
+    private bool _disposed;
     private long _flyoutClosedTicks;
 
     public static TrayIconManager? Instance { get; private set; }
@@ -47,7 +49,7 @@ public class TrayIconManager : IDisposable
         Dispatcher.UIThread.Post(WarmUpFlyout, DispatcherPriority.Background);
     }
 
-    private void WarmUpFlyout()
+    private static void WarmUpFlyout()
     {
         var warmup = new FlyoutWindow();
         warmup.ShowInTaskbar = false;
@@ -203,7 +205,14 @@ public class TrayIconManager : IDisposable
     {
         var win = _flyoutWindow;
         _flyoutWindow = null;
-        try { win?.Close(); } catch { }
+        try
+        {
+            win?.Close();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to close flyout window: {ex.Message}");
+        }
     }
 
     private void ExitApp()
@@ -233,11 +242,38 @@ public class TrayIconManager : IDisposable
     {
         var win = _mainWindow;
         _mainWindow = null;
-        try { win?.Close(); } catch { }
+        try
+        {
+            win?.Close();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to close main window: {ex.Message}");
+        }
     }
 
     public void Dispose()
     {
-        _trayIcon?.Dispose();
+        Dispose(disposing: true);
+        GC.SuppressFinalize(this);
+    }
+
+    private void Dispose(bool disposing)
+    {
+        if (_disposed)
+            return;
+
+        if (disposing)
+        {
+            CloseFlyout();
+            CloseMainWindow();
+            _trayIcon?.Dispose();
+            _trayIcon = null;
+
+            if (Instance == this)
+                Instance = null;
+        }
+
+        _disposed = true;
     }
 }

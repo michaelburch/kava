@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia;
@@ -19,6 +18,8 @@ public partial class FlyoutWindow : Window
     private const int FlyoutWidth = 380;
     private const int FlyoutHeight = 560;
     private const int FlyoutMargin = 12;
+    private const string AccentBrushKey = "KavaAccent";
+    private const string SecondaryTextBrushKey = "KavaTextSecondary";
 
     private Dictionary<DateOnly, List<EventItem>> _events;
 
@@ -131,11 +132,7 @@ public partial class FlyoutWindow : Window
             {
                 Text = date.Day.ToString(),
                 FontSize = 16,
-                Foreground = isSelected
-                    ? Brushes.White
-                    : isToday
-                        ? ThemeHelper.Brush("KavaAccent")
-                        : ThemeHelper.Brush("KavaTextSecondary"),
+                Foreground = DesktopUiFactory.GetDayNumberForeground(isSelected, isToday),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 FontWeight = isSelected ? FontWeight.SemiBold : FontWeight.Normal,
             };
@@ -153,7 +150,7 @@ public partial class FlyoutWindow : Window
                 stack.Children.Add(new Ellipse
                 {
                     Width = 4, Height = 4,
-                    Fill = ThemeHelper.Brush("KavaAccent"),
+                    Fill = ThemeHelper.Brush(AccentBrushKey),
                     HorizontalAlignment = HorizontalAlignment.Center,
                 });
             }
@@ -223,8 +220,8 @@ public partial class FlyoutWindow : Window
             if (oldBtn.Content is StackPanel { Children: [TextBlock oldText, ..] })
             {
                 oldText.Foreground = oldDate == today
-                    ? ThemeHelper.Brush("KavaAccent")
-                    : ThemeHelper.Brush("KavaTextSecondary");
+                    ? ThemeHelper.Brush(AccentBrushKey)
+                    : ThemeHelper.Brush(SecondaryTextBrushKey);
             }
         }
 
@@ -238,114 +235,8 @@ public partial class FlyoutWindow : Window
         }
     }
 
-    private static Control CreateEventCard(EventItem evt, bool isAllDay)
-    {
-        var colorBar = new Border
-        {
-            Background = Brush.Parse(evt.CalendarColor),
-            CornerRadius = new CornerRadius(2),
-            Width = 4,
-            VerticalAlignment = VerticalAlignment.Stretch,
-        };
-
-        var title = new TextBlock
-        {
-            Text = evt.Title,
-            FontSize = 14,
-            Foreground = ThemeHelper.Brush("KavaTextPrimary"),
-            TextTrimming = TextTrimming.CharacterEllipsis,
-        };
-
-        var textStack = new StackPanel { Spacing = 2 };
-        textStack.Children.Add(title);
-
-        if (isAllDay)
-        {
-            textStack.Children.Add(new TextBlock
-            {
-                Text = "All day",
-                FontSize = 12,
-                Foreground = ThemeHelper.Brush("KavaTextTertiary"),
-            });
-        }
-        else
-        {
-            if (!string.IsNullOrEmpty(evt.TimeRange))
-            {
-                textStack.Children.Add(new TextBlock
-                {
-                    Text = evt.TimeRange,
-                    FontSize = 12,
-                    Foreground = ThemeHelper.Brush("KavaTextTertiary"),
-                });
-            }
-
-            if (!string.IsNullOrEmpty(evt.Subtitle))
-            {
-                textStack.Children.Add(new TextBlock
-                {
-                    Text = evt.Subtitle,
-                    FontSize = 11,
-                    Foreground = ThemeHelper.Brush("KavaTextQuaternary"),
-                    TextTrimming = TextTrimming.CharacterEllipsis,
-                });
-            }
-        }
-
-        var grid = new Grid
-        {
-            Margin = new Thickness(0, 2, 0, 2),
-        };
-        grid.ColumnDefinitions.Add(new ColumnDefinition(4, GridUnitType.Pixel));
-        grid.ColumnDefinitions.Add(new ColumnDefinition(10, GridUnitType.Pixel));
-        grid.ColumnDefinitions.Add(new ColumnDefinition(1, GridUnitType.Star));
-
-        Grid.SetColumn(colorBar, 0);
-        Grid.SetColumn(textStack, 2);
-        grid.Children.Add(colorBar);
-        grid.Children.Add(textStack);
-
-        if (!string.IsNullOrEmpty(evt.MeetingUrl))
-        {
-            grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
-
-            var joinButton = new Button
-            {
-                Content = new TextBlock
-                {
-                    Text = "Join",
-                    FontSize = 11,
-                    Foreground = Brushes.White,
-                },
-                Background = ThemeHelper.Brush("KavaAction"),
-                BorderBrush = Brushes.Transparent,
-                Padding = new Thickness(10, 4),
-                CornerRadius = new CornerRadius(4),
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(6, 0, 0, 0),
-                Tag = evt.MeetingUrl,
-            };
-            joinButton.Click += JoinMeeting_Click;
-            Grid.SetColumn(joinButton, 3);
-            grid.Children.Add(joinButton);
-        }
-
-        return new Border
-        {
-            Child = grid,
-            Padding = new Thickness(8),
-            CornerRadius = new CornerRadius(4),
-        };
-    }
-
-    private static void JoinMeeting_Click(object? sender, RoutedEventArgs e)
-    {
-        if (sender is Button { Tag: string url } && Uri.TryCreate(url, UriKind.Absolute, out var uri)
-            && (uri.Scheme == "https" || uri.Scheme == "http"))
-        {
-            Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
-        }
-    }
+    private static Border CreateEventCard(EventItem evt, bool isAllDay) =>
+        DesktopUiFactory.CreateEventCard(evt, isAllDay, DesktopUiFactory.FlyoutEventCardStyle);
 
     private void DateButton_Click(object? sender, RoutedEventArgs e)
     {
@@ -372,7 +263,7 @@ public partial class FlyoutWindow : Window
     private void UpdateMonthYearHeading()
     {
         var month = _monthExpanded ? _viewMonth : new DateOnly(_selectedDate.Year, _selectedDate.Month, 1);
-        MonthYearHeading.Text = new DateTime(month.Year, month.Month, 1).ToString("MMMM yyyy");
+        MonthYearHeading.Text = CreateLocalMonthStart(month).ToString("MMMM yyyy");
     }
 
     private void BuildDayOfWeekHeader()
@@ -484,54 +375,7 @@ public partial class FlyoutWindow : Window
                     continue;
 
                 var date = new DateOnly(firstOfMonth.Year, firstOfMonth.Month, day);
-                var isToday = date == today;
-                var isSelected = date == _selectedDate;
-
-                var dayNumber = new TextBlock
-                {
-                    Text = day.ToString(),
-                    FontSize = 13,
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Foreground = isSelected
-                        ? Brushes.White
-                        : isToday
-                            ? ThemeHelper.Brush("KavaAccent")
-                            : ThemeHelper.Brush("KavaTextSecondary"),
-                };
-
-                var cellContent = new StackPanel
-                {
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    VerticalAlignment = VerticalAlignment.Center,
-                };
-                cellContent.Children.Add(dayNumber);
-
-                if (_events.ContainsKey(date))
-                {
-                    cellContent.Children.Add(new Ellipse
-                    {
-                        Width = 4, Height = 4,
-                        Fill = ThemeHelper.Brush("KavaAccent"),
-                        HorizontalAlignment = HorizontalAlignment.Center,
-                        Margin = new Thickness(0, 1, 0, 0),
-                    });
-                }
-
-                var btn = new Button
-                {
-                    Width = 40, Height = 40,
-                    Padding = new Thickness(0),
-                    HorizontalContentAlignment = HorizontalAlignment.Center,
-                    VerticalContentAlignment = VerticalAlignment.Center,
-                    CornerRadius = new CornerRadius(20),
-                    Background = isSelected
-                        ? ThemeHelper.Brush("KavaSelection")
-                        : Brushes.Transparent,
-                    BorderBrush = Brushes.Transparent,
-                    Content = cellContent,
-                    Tag = date,
-                };
+                var btn = CreateMonthDayButton(date, day, today);
                 btn.Click += MonthDay_Click;
                 Grid.SetColumn(btn, col);
                 weekGrid.Children.Add(btn);
@@ -544,27 +388,22 @@ public partial class FlyoutWindow : Window
         return panel;
     }
 
-    private void ScrollToMonth(DateOnly month)
+    private Button CreateMonthDayButton(DateOnly date, int day, DateOnly today)
     {
-        for (int i = 0; i < _monthPanels.Count; i++)
-        {
-            if (_monthPanels[i].month == month)
-            {
-                var panel = _monthPanels[i].panel;
-                if (panel.Bounds.Height > 0)
-                {
-                    MonthScroller.Offset = new Vector(0, panel.Bounds.Y);
-                }
-                else
-                {
-                    // Layout not ready yet, defer via LayoutUpdated
-                    _pendingScrollMonth = month;
-                    MonthCalendarStack.LayoutUpdated += OnCalendarLayoutUpdated;
-                }
-                break;
-            }
-        }
+        var isToday = date == today;
+        var isSelected = date == _selectedDate;
+
+        return DesktopUiFactory.CreateDayButton(
+            date,
+            isSelected,
+            CreateMonthDayContent(day, isSelected, isToday, _events.ContainsKey(date)),
+            size: 40,
+            cornerRadius: 20,
+            selectedBackground: ThemeHelper.Brush("KavaSelection"));
     }
+
+    private static StackPanel CreateMonthDayContent(int day, bool isSelected, bool isToday, bool hasEvents) =>
+        DesktopUiFactory.CreateDayCellContent(day, isSelected, isToday, hasEvents, fontSize: 13);
 
     private void OnMonthScrollChanged(object? sender, ScrollChangedEventArgs e)
     {
@@ -582,7 +421,7 @@ public partial class FlyoutWindow : Window
                 if (_viewMonth != month)
                 {
                     _viewMonth = month;
-                    MonthYearHeading.Text = new DateTime(month.Year, month.Month, 1).ToString("MMMM yyyy");
+                    MonthYearHeading.Text = CreateLocalMonthStart(month).ToString("MMMM yyyy");
                 }
                 break;
             }
@@ -595,10 +434,13 @@ public partial class FlyoutWindow : Window
             SelectDate(date);
     }
 
-    private void OpenMainWindow_Click(object? sender, RoutedEventArgs e)
+    private static void OpenMainWindow_Click(object? sender, RoutedEventArgs e)
     {
         TrayIconManager.Instance?.ShowMainWindow();
     }
+
+    private static DateTime CreateLocalMonthStart(DateOnly month) =>
+        new(month.Year, month.Month, 1, 0, 0, 0, DateTimeKind.Local);
 
     private void GoToToday_Click(object? sender, RoutedEventArgs e)
     {

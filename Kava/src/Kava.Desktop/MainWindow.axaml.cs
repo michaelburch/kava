@@ -16,6 +16,12 @@ namespace Kava.Desktop;
 
 public partial class MainWindow : Window
 {
+    private const string CardBackgroundBrushKey = "KavaCardBg";
+    private const string DestructiveBrushKey = "KavaDestructive";
+    private const string PrimaryTextBrushKey = "KavaTextPrimary";
+    private const string QuaternaryTextBrushKey = "KavaTextQuaternary";
+    private const string SecondaryTextBrushKey = "KavaTextSecondary";
+
     private Dictionary<DateOnly, List<EventItem>> _events;
     private readonly Dictionary<DateOnly, Button> _dayButtons = new();
     private List<AccountItem> _accounts;
@@ -120,8 +126,12 @@ public partial class MainWindow : Window
 
     private void OnBackgroundSyncCompleted()
     {
-        Dispatcher.UIThread.Post(async () => await LoadDataAsync());
+        Dispatcher.UIThread.Post(async () =>
+        {
+            await LoadDataAsync();
+        });
     }
+
 #endif
 
     private void OnThemeChanged(object? sender, EventArgs e)
@@ -133,7 +143,7 @@ public partial class MainWindow : Window
             BuildAccountList();
         else if (AccountDetailScroller.IsVisible)
         {
-            // Re-show the last account detail if visible
+            // Re-show the last account detail if visible.
         }
         else
             SelectDate(_selectedDate);
@@ -207,10 +217,10 @@ public partial class MainWindow : Window
             // Month heading
             MainEventList.Children.Add(new TextBlock
             {
-                Text = new DateTime(monthGroup.Key.Year, monthGroup.Key.Month, 1).ToString("MMMM yyyy"),
+                Text = CreateLocalMonthStart(monthGroup.Key).ToString("MMMM yyyy"),
                 FontSize = 16,
                 FontWeight = FontWeight.SemiBold,
-                Foreground = ThemeHelper.Brush("KavaTextSecondary"),
+                Foreground = ThemeHelper.Brush(SecondaryTextBrushKey),
                 Margin = new Thickness(0, 12, 0, 4),
             });
 
@@ -235,7 +245,7 @@ public partial class MainWindow : Window
             {
                 Text = $"No events matching \"{query}\"",
                 FontSize = 14,
-                Foreground = ThemeHelper.Brush("KavaTextQuaternary"),
+                Foreground = ThemeHelper.Brush(QuaternaryTextBrushKey),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 Margin = new Thickness(0, 60, 0, 0),
             });
@@ -267,12 +277,15 @@ public partial class MainWindow : Window
         }
     }
 
+    private static DateTime CreateLocalMonthStart(DateOnly month) =>
+        new(month.Year, month.Month, 1, 0, 0, 0, DateTimeKind.Local);
+
     private void BuildSidebarMonth()
     {
         SidebarMonthStack.Children.Clear();
         _dayButtons.Clear();
 
-        SidebarMonthHeading.Text = new DateTime(_sidebarMonth.Year, _sidebarMonth.Month, 1)
+        SidebarMonthHeading.Text = CreateLocalMonthStart(_sidebarMonth)
             .ToString("MMMM yyyy");
 
         var today = DateOnly.FromDateTime(DateTime.Today);
@@ -292,54 +305,7 @@ public partial class MainWindow : Window
                     continue;
 
                 var date = new DateOnly(_sidebarMonth.Year, _sidebarMonth.Month, day);
-                var isToday = date == today;
-                var isSelected = date == _selectedDate;
-
-                var dayNumber = new TextBlock
-                {
-                    Text = day.ToString(),
-                    FontSize = 13,
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Foreground = isSelected
-                        ? Brushes.White
-                        : isToday
-                            ? ThemeHelper.Brush("KavaAccent")
-                            : ThemeHelper.Brush("KavaTextSecondary"),
-                };
-
-                var cellContent = new StackPanel
-                {
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    VerticalAlignment = VerticalAlignment.Center,
-                };
-                cellContent.Children.Add(dayNumber);
-
-                if (_events.ContainsKey(date))
-                {
-                    cellContent.Children.Add(new Ellipse
-                    {
-                        Width = 4, Height = 4,
-                        Fill = ThemeHelper.Brush("KavaAccent"),
-                        HorizontalAlignment = HorizontalAlignment.Center,
-                        Margin = new Thickness(0, 1, 0, 0),
-                    });
-                }
-
-                var btn = new Button
-                {
-                    Width = 30, Height = 30,
-                    Padding = new Thickness(0),
-                    HorizontalContentAlignment = HorizontalAlignment.Center,
-                    VerticalContentAlignment = VerticalAlignment.Center,
-                    CornerRadius = new CornerRadius(15),
-                    Background = isSelected
-                        ? ThemeHelper.Brush("KavaSelection")
-                        : Brushes.Transparent,
-                    BorderBrush = Brushes.Transparent,
-                    Content = cellContent,
-                    Tag = date,
-                };
+                var btn = CreateSidebarDayButton(date, day, today);
                 btn.Click += SidebarDay_Click;
                 Grid.SetColumn(btn, col);
                 weekGrid.Children.Add(btn);
@@ -349,6 +315,19 @@ public partial class MainWindow : Window
             SidebarMonthStack.Children.Add(weekGrid);
         }
     }
+
+    private Button CreateSidebarDayButton(DateOnly date, int day, DateOnly today)
+    {
+        var isToday = date == today;
+        var isSelected = date == _selectedDate;
+
+        var cellContent = CreateDayCellContent(day, isSelected, isToday, _events.ContainsKey(date));
+
+        return DesktopUiFactory.CreateDayButton(date, isSelected, cellContent, size: 30, cornerRadius: 15, selectedBackground: ThemeHelper.Brush("KavaSelection"));
+    }
+
+    private static StackPanel CreateDayCellContent(int day, bool isSelected, bool isToday, bool hasEvents) =>
+        DesktopUiFactory.CreateDayCellContent(day, isSelected, isToday, hasEvents, fontSize: 13);
 
     private void SelectDate(DateOnly date)
     {
@@ -402,79 +381,70 @@ public partial class MainWindow : Window
 
     private void BuildAgendaView(DateOnly selectedDate)
     {
-        // Collect days to show: try the week first, fall back to the month
-        var weekStart = selectedDate.AddDays(-(int)selectedDate.DayOfWeek);
-        var weekDays = Enumerable.Range(0, 7).Select(i => weekStart.AddDays(i)).ToList();
-
-        var daysWithEvents = weekDays.Where(d => _events.ContainsKey(d)).ToList();
-
-        List<DateOnly> daysToShow;
-        if (daysWithEvents.Count > 0 || _events.ContainsKey(selectedDate))
-        {
-            // Show the full week
-            daysToShow = weekDays;
-        }
-        else
-        {
-            // No events this week — show all days in the month that have events, plus the selected day
-            var monthStart = new DateOnly(selectedDate.Year, selectedDate.Month, 1);
-            var daysInMonth = DateTime.DaysInMonth(selectedDate.Year, selectedDate.Month);
-            daysToShow = Enumerable.Range(0, daysInMonth)
-                .Select(i => monthStart.AddDays(i))
-                .Where(d => _events.ContainsKey(d) || d == selectedDate)
-                .ToList();
-
-            if (!daysToShow.Contains(selectedDate))
-                daysToShow.Add(selectedDate);
-            daysToShow.Sort();
-        }
-
+        var daysToShow = GetDaysToShow(selectedDate);
         var today = DateOnly.FromDateTime(DateTime.Today);
 
         foreach (var day in daysToShow)
+            AddAgendaDay(day, selectedDate, today);
+    }
+
+    private List<DateOnly> GetDaysToShow(DateOnly selectedDate)
+    {
+        var weekStart = selectedDate.AddDays(-(int)selectedDate.DayOfWeek);
+        var weekDays = Enumerable.Range(0, 7).Select(i => weekStart.AddDays(i)).ToList();
+        if (weekDays.Any(_events.ContainsKey) || _events.ContainsKey(selectedDate))
+            return weekDays;
+
+        var monthStart = new DateOnly(selectedDate.Year, selectedDate.Month, 1);
+        var daysInMonth = DateTime.DaysInMonth(selectedDate.Year, selectedDate.Month);
+        var daysToShow = Enumerable.Range(0, daysInMonth)
+            .Select(i => monthStart.AddDays(i))
+            .Where(d => _events.ContainsKey(d) || d == selectedDate)
+            .ToList();
+
+        if (!daysToShow.Contains(selectedDate))
+            daysToShow.Add(selectedDate);
+
+        daysToShow.Sort();
+        return daysToShow;
+    }
+
+    private void AddAgendaDay(DateOnly day, DateOnly selectedDate, DateOnly today)
+    {
+        var isSelected = day == selectedDate;
+        MainEventList.Children.Add(CreateDayHeader(day, today, isSelected));
+
+        if (_events.TryGetValue(day, out var dayEvents) && dayEvents.Count > 0)
         {
-            var isSelected = day == selectedDate;
-            var hasEvents = _events.TryGetValue(day, out var dayEvents) && dayEvents.Count > 0;
-
-            // Day header
-            var headerText = day == today
-                ? $"{day:dddd, MMMM d} — Today"
-                : $"{day:dddd, MMMM d}";
-
-            var dayHeader = new TextBlock
-            {
-                Text = headerText,
-                FontSize = isSelected ? 15 : 13,
-                FontWeight = isSelected ? FontWeight.SemiBold : FontWeight.Normal,
-                Foreground = isSelected
-                    ? ThemeHelper.Brush("KavaTextPrimary")
-                    : ThemeHelper.Brush("KavaTextSubtle"),
-                Margin = new Thickness(0, 10, 0, 2),
-                Tag = day,
-            };
-            MainEventList.Children.Add(dayHeader);
-
-            if (hasEvents)
-            {
-                var allDay = dayEvents!.Where(e => e.IsAllDay);
-                var timed = dayEvents!.Where(e => !e.IsAllDay);
-                foreach (var evt in allDay)
-                    MainEventList.Children.Add(CreateEventCard(evt, isAllDay: true));
-                foreach (var evt in timed)
-                    MainEventList.Children.Add(CreateEventCard(evt, isAllDay: false));
-            }
-            else
-            {
-                MainEventList.Children.Add(new TextBlock
-                {
-                    Text = "No events",
-                    FontSize = 12,
-                    Foreground = ThemeHelper.Brush("KavaTextDisabled"),
-                    FontStyle = FontStyle.Italic,
-                    Margin = new Thickness(4, 2, 0, 0),
-                });
-            }
+            AddEventCards(dayEvents.Where(e => e.IsAllDay), true);
+            AddEventCards(dayEvents.Where(e => !e.IsAllDay), false);
+            return;
         }
+
+        MainEventList.Children.Add(new TextBlock
+        {
+            Text = "No events",
+            FontSize = 12,
+            Foreground = ThemeHelper.Brush("KavaTextDisabled"),
+            FontStyle = FontStyle.Italic,
+            Margin = new Thickness(4, 2, 0, 0),
+        });
+    }
+
+    private static TextBlock CreateDayHeader(DateOnly day, DateOnly today, bool isSelected) => new()
+    {
+        Text = day == today ? $"{day:dddd, MMMM d} — Today" : $"{day:dddd, MMMM d}",
+        FontSize = isSelected ? 15 : 13,
+        FontWeight = isSelected ? FontWeight.SemiBold : FontWeight.Normal,
+        Foreground = isSelected ? ThemeHelper.Brush(PrimaryTextBrushKey) : ThemeHelper.Brush("KavaTextSubtle"),
+        Margin = new Thickness(0, 10, 0, 2),
+        Tag = day,
+    };
+
+    private void AddEventCards(IEnumerable<EventItem> events, bool isAllDay)
+    {
+        foreach (var evt in events)
+            MainEventList.Children.Add(CreateEventCard(evt, isAllDay));
     }
 
     private void ScrollToSelectedDay(DateOnly date)
@@ -510,7 +480,7 @@ public partial class MainWindow : Window
             {
                 oldText.Foreground = oldDate == today
                     ? ThemeHelper.Brush("KavaAccent")
-                    : ThemeHelper.Brush("KavaTextSecondary");
+                    : ThemeHelper.Brush(SecondaryTextBrushKey);
             }
         }
 
@@ -524,108 +494,10 @@ public partial class MainWindow : Window
         }
     }
 
-    private static Control CreateEventCard(EventItem evt, bool isAllDay)
-    {
-        var colorBar = new Border
-        {
-            Background = Brush.Parse(evt.CalendarColor),
-            CornerRadius = new CornerRadius(2),
-            Width = 4,
-            VerticalAlignment = VerticalAlignment.Stretch,
-        };
+    private static Border CreateEventCard(EventItem evt, bool isAllDay) =>
+        DesktopUiFactory.CreateEventCard(evt, isAllDay, DesktopUiFactory.MainEventCardStyle);
 
-        var title = new TextBlock
-        {
-            Text = evt.Title,
-            FontSize = 15,
-            Foreground = ThemeHelper.Brush("KavaTextPrimary"),
-            TextTrimming = TextTrimming.CharacterEllipsis,
-        };
-
-        var textStack = new StackPanel { Spacing = 2 };
-        textStack.Children.Add(title);
-
-        if (isAllDay)
-        {
-            textStack.Children.Add(new TextBlock
-            {
-                Text = "All day",
-                FontSize = 13,
-                Foreground = ThemeHelper.Brush("KavaTextTertiary"),
-            });
-        }
-        else
-        {
-            if (!string.IsNullOrEmpty(evt.TimeRange))
-            {
-                textStack.Children.Add(new TextBlock
-                {
-                    Text = evt.TimeRange,
-                    FontSize = 13,
-                    Foreground = ThemeHelper.Brush("KavaTextTertiary"),
-                });
-            }
-
-            if (!string.IsNullOrEmpty(evt.Subtitle))
-            {
-                textStack.Children.Add(new TextBlock
-                {
-                    Text = evt.Subtitle,
-                    FontSize = 12,
-                    Foreground = ThemeHelper.Brush("KavaTextQuaternary"),
-                    TextTrimming = TextTrimming.CharacterEllipsis,
-                });
-            }
-        }
-
-        var grid = new Grid
-        {
-            Margin = new Thickness(0, 4, 0, 4),
-        };
-        grid.ColumnDefinitions.Add(new ColumnDefinition(4, GridUnitType.Pixel));
-        grid.ColumnDefinitions.Add(new ColumnDefinition(12, GridUnitType.Pixel));
-        grid.ColumnDefinitions.Add(new ColumnDefinition(1, GridUnitType.Star));
-
-        Grid.SetColumn(colorBar, 0);
-        Grid.SetColumn(textStack, 2);
-        grid.Children.Add(colorBar);
-        grid.Children.Add(textStack);
-
-        if (!string.IsNullOrEmpty(evt.MeetingUrl))
-        {
-            grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
-
-            var joinButton = new Button
-            {
-                Content = new TextBlock
-                {
-                    Text = "Join",
-                    FontSize = 12,
-                    Foreground = Brushes.White,
-                },
-                Background = ThemeHelper.Brush("KavaAction"),
-                BorderBrush = Brushes.Transparent,
-                Padding = new Thickness(12, 5),
-                CornerRadius = new CornerRadius(4),
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(8, 0, 0, 0),
-                Tag = evt.MeetingUrl,
-            };
-            joinButton.Click += JoinMeeting_Click;
-            Grid.SetColumn(joinButton, 3);
-            grid.Children.Add(joinButton);
-        }
-
-        return new Border
-        {
-            Child = grid,
-            Padding = new Thickness(12, 8),
-            CornerRadius = new CornerRadius(6),
-            Background = ThemeHelper.Brush("KavaCardBg"),
-        };
-    }
-
-    private static Control CreateMiniEventCard(EventItem evt)
+    private static StackPanel CreateMiniEventCard(EventItem evt)
     {
         var dot = new Ellipse
         {
@@ -650,15 +522,6 @@ public partial class MainWindow : Window
             Orientation = Orientation.Horizontal,
             Children = { dot, text },
         };
-    }
-
-    private static void JoinMeeting_Click(object? sender, RoutedEventArgs e)
-    {
-        if (sender is Button { Tag: string url } && Uri.TryCreate(url, UriKind.Absolute, out var uri)
-            && (uri.Scheme == "https" || uri.Scheme == "http"))
-        {
-            Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
-        }
     }
 
     private void SidebarDay_Click(object? sender, RoutedEventArgs e)
@@ -740,7 +603,7 @@ public partial class MainWindow : Window
             {
                 Text = account.Name,
                 FontSize = 14,
-                Foreground = ThemeHelper.Brush("KavaTextPrimary"),
+                Foreground = ThemeHelper.Brush(PrimaryTextBrushKey),
             };
 
             var urlBlock = new TextBlock
@@ -756,7 +619,7 @@ public partial class MainWindow : Window
                     ? "ICS Subscription"
                     : $"{account.Calendars.Count(c => c.Enabled)} of {account.Calendars.Count} calendars",
                 FontSize = 11,
-                Foreground = ThemeHelper.Brush("KavaTextQuaternary"),
+                Foreground = ThemeHelper.Brush(QuaternaryTextBrushKey),
             };
 
             var infoStack = new StackPanel { Spacing = 2 };
@@ -776,7 +639,7 @@ public partial class MainWindow : Window
             {
                 Text = ">",
                 FontSize = 16,
-                Foreground = ThemeHelper.Brush("KavaTextQuaternary"),
+                Foreground = ThemeHelper.Brush(QuaternaryTextBrushKey),
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(8, 0, 0, 0),
             };
@@ -799,7 +662,7 @@ public partial class MainWindow : Window
             var card = new Button
             {
                 Content = grid,
-                Background = ThemeHelper.Brush("KavaCardBg"),
+                Background = ThemeHelper.Brush(CardBackgroundBrushKey),
                 BorderBrush = Brushes.Transparent,
                 Padding = new Thickness(16),
                 CornerRadius = new CornerRadius(8),
@@ -821,6 +684,11 @@ public partial class MainWindow : Window
 
     private void ShowAccountDetail(AccountItem account)
     {
+        ShowAccountDetailLayout(account);
+    }
+
+    private void ShowAccountDetailLayout(AccountItem account)
+    {
         AgendaScroller.IsVisible = false;
         AccountsScroller.IsVisible = false;
         AccountDetailScroller.IsVisible = true;
@@ -828,8 +696,16 @@ public partial class MainWindow : Window
         AccountsButtonText.Text = "Today";
 
         AccountDetailPanel.Children.Clear();
+        AccountDetailPanel.Children.Add(CreateBackToAccountsButton());
+        AccountDetailPanel.Children.Add(CreateAccountSettingsCard(account));
+        AccountDetailPanel.Children.Add(CreateCalendarsHeader());
 
-        // Back button
+        foreach (var cal in account.Calendars)
+            AccountDetailPanel.Children.Add(CreateCalendarCard(cal));
+    }
+
+    private Button CreateBackToAccountsButton()
+    {
         var backButton = new Button
         {
             Content = new TextBlock
@@ -843,73 +719,77 @@ public partial class MainWindow : Window
             Padding = new Thickness(0, 0, 0, 4),
         };
         backButton.Click += (_, _) => ShowAccountsView();
-        AccountDetailPanel.Children.Add(backButton);
+        return backButton;
+    }
 
-        // Account settings section
-        var settingsCard = new Border
-        {
-            Background = ThemeHelper.Brush("KavaCardBg"),
-            CornerRadius = new CornerRadius(8),
-            Padding = new Thickness(20),
-        };
-
-        var settingsStack = new StackPanel { Spacing = 12 };
+    private Border CreateAccountSettingsCard(AccountItem account)
+    {
         var isSubscription = account.ProviderType == Kava.Core.Models.ProviderType.IcsSubscription;
-
+        var settingsStack = new StackPanel { Spacing = 12 };
         settingsStack.Children.Add(new TextBlock
         {
             Text = isSubscription ? "Subscription Settings" : "Account Settings",
             FontSize = 16,
             FontWeight = FontWeight.SemiBold,
-            Foreground = ThemeHelper.Brush("KavaTextPrimary"),
+            Foreground = ThemeHelper.Brush(PrimaryTextBrushKey),
         });
 
-        var saveButton = new Button
+        var saveButton = CreateSaveChangesButton();
+        EventHandler<TextChangedEventArgs> checkForChanges = (_, _) => UpdateSaveButtonState(settingsStack, account, isSubscription, saveButton);
+
+        settingsStack.Children.Add(CreateFormField("Display name", account.Name, checkForChanges));
+        settingsStack.Children.Add(CreateFormField(isSubscription ? "Calendar URL" : "Server URL", account.ServerUrl, checkForChanges));
+        if (!isSubscription)
+            settingsStack.Children.Add(CreateFormField("Username", account.Username, checkForChanges));
+
+        settingsStack.Children.Add(CreateAccountActionButtons(account, isSubscription, saveButton));
+
+        return new Border
         {
-            Content = "Save Changes",
-            Background = ThemeHelper.Brush("KavaAction"),
-            Foreground = Brushes.White,
-            BorderBrush = Brushes.Transparent,
-            Padding = new Thickness(16, 8),
-            CornerRadius = new CornerRadius(4),
-            FontSize = 13,
-            IsEnabled = false,
-            Opacity = 0.5,
+            Background = ThemeHelper.Brush(CardBackgroundBrushKey),
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(20),
+            Child = settingsStack,
         };
+    }
 
-        void CheckForChanges(object? s, TextChangedEventArgs e2)
+    private static Button CreateSaveChangesButton() => new()
+    {
+        Content = "Save Changes",
+        Background = ThemeHelper.Brush("KavaAction"),
+        Foreground = Brushes.White,
+        BorderBrush = Brushes.Transparent,
+        Padding = new Thickness(16, 8),
+        CornerRadius = new CornerRadius(4),
+        FontSize = 13,
+        IsEnabled = false,
+        Opacity = 0.5,
+    };
+
+    private static void UpdateSaveButtonState(StackPanel settingsStack, AccountItem account, bool isSubscription, Button saveButton)
+    {
+        var nameField = GetSettingsTextBox(settingsStack, 0);
+        var urlField = GetSettingsTextBox(settingsStack, 1);
+        var changed = nameField?.Text != account.Name || urlField?.Text != account.ServerUrl;
+
+        if (!isSubscription)
         {
-            var nameField = settingsStack.Children.OfType<Grid>().ElementAtOrDefault(0)
-                ?.Children.OfType<TextBox>().FirstOrDefault();
-            var urlField = settingsStack.Children.OfType<Grid>().ElementAtOrDefault(1)
-                ?.Children.OfType<TextBox>().FirstOrDefault();
-
-            bool changed;
-            if (isSubscription)
-            {
-                changed = nameField?.Text != account.Name
-                       || urlField?.Text != account.ServerUrl;
-            }
-            else
-            {
-                var userField = settingsStack.Children.OfType<Grid>().ElementAtOrDefault(2)
-                    ?.Children.OfType<TextBox>().FirstOrDefault();
-                changed = nameField?.Text != account.Name
-                       || urlField?.Text != account.ServerUrl
-                       || userField?.Text != account.Username;
-            }
-
-            saveButton.IsEnabled = changed;
-            saveButton.Opacity = changed ? 1.0 : 0.5;
+            var userField = GetSettingsTextBox(settingsStack, 2);
+            changed = changed || userField?.Text != account.Username;
         }
 
-        settingsStack.Children.Add(CreateFormField("Display name", account.Name, CheckForChanges));
-        settingsStack.Children.Add(CreateFormField(isSubscription ? "Calendar URL" : "Server URL", account.ServerUrl, CheckForChanges));
-        if (!isSubscription)
-            settingsStack.Children.Add(CreateFormField("Username", account.Username, CheckForChanges));
+        saveButton.IsEnabled = changed;
+        saveButton.Opacity = changed ? 1.0 : 0.5;
+    }
 
+    private static TextBox? GetSettingsTextBox(StackPanel settingsStack, int index) =>
+        settingsStack.Children.OfType<Grid>().ElementAtOrDefault(index)?.Children.OfType<TextBox>().FirstOrDefault();
+
+    private StackPanel CreateAccountActionButtons(AccountItem account, bool isSubscription, Button saveButton)
+    {
         var buttonRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 4, 0, 0) };
         buttonRow.Children.Add(saveButton);
+
         var removeButton = new Button
         {
             Content = isSubscription ? "Unsubscribe" : "Remove Account",
@@ -921,175 +801,206 @@ public partial class MainWindow : Window
             CornerRadius = new CornerRadius(4),
             FontSize = 13,
         };
-        removeButton.Click += (_, _) => RemoveAccount_Click(account);
+        removeButton.Click += async (_, _) => await RemoveAccountAsync(account);
         buttonRow.Children.Add(removeButton);
-        settingsStack.Children.Add(buttonRow);
+        return buttonRow;
+    }
 
-        settingsCard.Child = settingsStack;
-        AccountDetailPanel.Children.Add(settingsCard);
+    private static TextBlock CreateCalendarsHeader() => new()
+    {
+        Text = "Calendars",
+        FontSize = 16,
+        FontWeight = FontWeight.SemiBold,
+        Foreground = ThemeHelper.Brush(PrimaryTextBrushKey),
+        Margin = new Thickness(0, 8, 0, 4),
+    };
 
-        // Calendars section
-        AccountDetailPanel.Children.Add(new TextBlock
+    private Border CreateCalendarCard(CalendarInfo cal)
+    {
+        var colorSwatch = new Border
         {
-            Text = "Calendars",
-            FontSize = 16,
-            FontWeight = FontWeight.SemiBold,
-            Foreground = ThemeHelper.Brush("KavaTextPrimary"),
-            Margin = new Thickness(0, 8, 0, 4),
-        });
+            Width = 18,
+            Height = 18,
+            Background = Brush.Parse(cal.Color),
+            CornerRadius = new CornerRadius(3),
+        };
 
-        foreach (var cal in account.Calendars)
+        var colorButton = CreateCalendarColorButton(cal, colorSwatch);
+        var calName = new TextBlock
         {
-            var calCard = new Border
-            {
-                Background = ThemeHelper.Brush("KavaCardBg"),
-                CornerRadius = new CornerRadius(8),
-                Padding = new Thickness(16),
-                Margin = new Thickness(0, 0, 0, 4),
-            };
+            Text = cal.Name,
+            FontSize = 14,
+            Foreground = GetCalendarNameForeground(cal.Enabled),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
 
-            var calGrid = new Grid();
-            calGrid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
-            calGrid.ColumnDefinitions.Add(new ColumnDefinition(new GridLength(1, GridUnitType.Star)));
-            calGrid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
-            calGrid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
+        var enabledToggle = CreateCalendarEnabledToggle(cal, calName, colorButton);
+        colorButton.Opacity = cal.Enabled ? 1.0 : 0.4;
 
-            // Color swatch button
-            var colorSwatch = new Border
-            {
-                Width = 18, Height = 18,
-                Background = Brush.Parse(cal.Color),
-                CornerRadius = new CornerRadius(3),
-            };
+        var calGrid = new Grid();
+        calGrid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
+        calGrid.ColumnDefinitions.Add(new ColumnDefinition(new GridLength(1, GridUnitType.Star)));
+        calGrid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
+        calGrid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
+        Grid.SetColumn(colorButton, 0);
+        Grid.SetColumn(calName, 1);
+        Grid.SetColumn(enabledToggle, 3);
+        calGrid.Children.Add(colorButton);
+        calGrid.Children.Add(calName);
+        calGrid.Children.Add(enabledToggle);
 
-            var colorButton = new Button
-            {
-                Width = 28, Height = 28,
-                Padding = new Thickness(0),
-                Background = Brushes.Transparent,
-                BorderBrush = ThemeHelper.Brush("KavaBorderSubtle"),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(4),
-                Margin = new Thickness(0, 0, 12, 0),
-                HorizontalContentAlignment = HorizontalAlignment.Center,
-                VerticalContentAlignment = VerticalAlignment.Center,
-                Content = colorSwatch,
-                Tag = cal,
-            };
-            ToolTip.SetTip(colorButton, "Change color");
-            colorButton.Click += (s, _) =>
-            {
-                if (s is not Button { Tag: CalendarInfo ci } btn) return;
-                var flyout = new Flyout
-                {
-                    Placement = PlacementMode.BottomEdgeAlignedLeft,
-                    ShowMode = FlyoutShowMode.Standard,
-                };
+        return new Border
+        {
+            Background = ThemeHelper.Brush(CardBackgroundBrushKey),
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(16),
+            Margin = new Thickness(0, 0, 0, 4),
+            Child = calGrid,
+        };
+    }
 
-                var wrap = new WrapPanel { MaxWidth = 210 };
+    private Button CreateCalendarColorButton(CalendarInfo cal, Border colorSwatch)
+    {
+        var colorButton = new Button
+        {
+            Width = 28,
+            Height = 28,
+            Padding = new Thickness(0),
+            Background = Brushes.Transparent,
+            BorderBrush = ThemeHelper.Brush("KavaBorderSubtle"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4),
+            Margin = new Thickness(0, 0, 12, 0),
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Content = colorSwatch,
+            Tag = cal,
+        };
 
-                // Build color list: preset palette + current color if not already included
-                var colors = CalendarColors.ToList();
-                if (!colors.Contains(ci.Color, StringComparer.OrdinalIgnoreCase))
-                    colors.Insert(0, ci.Color);
+        ToolTip.SetTip(colorButton, "Change color");
+        colorButton.Click += (s, _) =>
+        {
+            if (s is Button { Tag: CalendarInfo ci } btn)
+                ShowCalendarColorPicker(btn, ci, colorSwatch);
+        };
 
-                foreach (var c in colors)
-                {
-                    var swatchBorder = new Border
-                    {
-                        Width = 24, Height = 24,
-                        Background = Brush.Parse(c),
-                        CornerRadius = new CornerRadius(4),
-                        BorderThickness = new Thickness(c.Equals(ci.Color, StringComparison.OrdinalIgnoreCase) ? 2 : 0),
-                        BorderBrush = ThemeHelper.Brush("KavaTextPrimary"),
-                    };
+        return colorButton;
+    }
 
-                    var swatchButton = new Button
-                    {
-                        Width = 30, Height = 30,
-                        Padding = new Thickness(0),
-                        Margin = new Thickness(2),
-                        Background = Brushes.Transparent,
-                        BorderThickness = new Thickness(0),
-                        HorizontalContentAlignment = HorizontalAlignment.Center,
-                        VerticalContentAlignment = VerticalAlignment.Center,
-                        Content = swatchBorder,
-                        Tag = c,
-                        Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand),
-                    };
+    private void ShowCalendarColorPicker(Button button, CalendarInfo calendar, Border colorSwatch)
+    {
+        var flyout = new Flyout
+        {
+            Placement = PlacementMode.BottomEdgeAlignedLeft,
+            ShowMode = FlyoutShowMode.Standard,
+            Content = CreateCalendarColorWrapPanel(calendar, colorSwatch),
+        };
 
-                    swatchButton.Click += async (sender, _) =>
-                    {
-                        if (sender is not Button { Tag: string picked }) return;
-                        ci.Color = picked;
-                        colorSwatch.Background = Brush.Parse(picked);
-                        Dispatcher.UIThread.Post(() => flyout.Hide());
+        flyout.ShowAt(button);
+    }
+
+    private WrapPanel CreateCalendarColorWrapPanel(CalendarInfo calendar, Border colorSwatch)
+    {
+        var wrap = new WrapPanel { MaxWidth = 210 };
+        var colors = CalendarColors.ToList();
+        if (!colors.Contains(calendar.Color, StringComparer.OrdinalIgnoreCase))
+            colors.Insert(0, calendar.Color);
+
+        foreach (var color in colors)
+            wrap.Children.Add(CreateColorSwatchButton(calendar, colorSwatch, color));
+
+        return wrap;
+    }
+
+    private Button CreateColorSwatchButton(CalendarInfo calendar, Border colorSwatch, string color)
+    {
+        var swatchBorder = new Border
+        {
+            Width = 24,
+            Height = 24,
+            Background = Brush.Parse(color),
+            CornerRadius = new CornerRadius(4),
+            BorderThickness = new Thickness(color.Equals(calendar.Color, StringComparison.OrdinalIgnoreCase) ? 2 : 0),
+            BorderBrush = ThemeHelper.Brush(PrimaryTextBrushKey),
+        };
+
+        var swatchButton = new Button
+        {
+            Width = 30,
+            Height = 30,
+            Padding = new Thickness(0),
+            Margin = new Thickness(2),
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Content = swatchBorder,
+            Tag = color,
+            Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand),
+        };
+
+        swatchButton.Click += async (sender, _) =>
+        {
+            if (sender is Button { Tag: string picked })
+                await ApplyCalendarColorAsync(calendar, colorSwatch, picked);
+        };
+
+        return swatchButton;
+    }
+
+    private async Task ApplyCalendarColorAsync(CalendarInfo calendar, Border colorSwatch, string color)
+    {
+        calendar.Color = color;
+        colorSwatch.Background = Brush.Parse(color);
 #if !SAMPLE_DATA
-                        if (!string.IsNullOrEmpty(ci.CalendarId))
-                        {
-                            Debug.WriteLine($"[Color] Setting calendar color to {picked}");
-                            await App.AccountService!.UpdateCalendarColorAsync(ci.CalendarId, picked);
-                            // Update cached events so the agenda view reflects the new color immediately
-                            foreach (var evtList in _events.Values)
-                                foreach (var evt in evtList)
-                                    if (evt.CalendarId == ci.CalendarId)
-                                        evt.CalendarColor = picked;
-                            RefreshSidebarAgenda();
-                        }
+        if (!string.IsNullOrEmpty(calendar.CalendarId))
+        {
+            Debug.WriteLine($"[Color] Setting calendar color to {color}");
+            await App.AccountService!.UpdateCalendarColorAsync(calendar.CalendarId, color);
+            UpdateCachedCalendarColor(calendar.CalendarId, color);
+            RefreshSidebarAgenda();
+        }
 #endif
-                    };
+    }
 
-                    wrap.Children.Add(swatchButton);
-                }
-
-                flyout.Content = wrap;
-                flyout.ShowAt(btn);
-            };
-
-            var calName = new TextBlock
-            {
-                Text = cal.Name,
-                FontSize = 14,
-                Foreground = cal.Enabled ? ThemeHelper.Brush("KavaTextPrimary") : ThemeHelper.Brush("KavaTextQuaternary"),
-                VerticalAlignment = VerticalAlignment.Center,
-            };
-
-            var enabledToggle = new CheckBox
-            {
-                IsChecked = cal.Enabled,
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(8, 0, 0, 0),
-                Tag = cal,
-            };
-
-            var capturedCalName = calName;
-            var capturedColorButton = colorButton;
-            enabledToggle.IsCheckedChanged += async (s, _) =>
-            {
-                if (s is CheckBox { Tag: CalendarInfo ci, IsChecked: { } isChecked })
-                {
-                    ci.Enabled = isChecked;
-                    capturedCalName.Foreground = isChecked ? ThemeHelper.Brush("KavaTextPrimary") : ThemeHelper.Brush("KavaTextQuaternary");
-                    capturedColorButton.Opacity = isChecked ? 1.0 : 0.4;
-#if !SAMPLE_DATA
-                    if (!string.IsNullOrEmpty(ci.CalendarId))
-                        await App.AccountService!.UpdateCalendarEnabledAsync(ci.CalendarId, isChecked);
-#endif
-                }
-            };
-            colorButton.Opacity = cal.Enabled ? 1.0 : 0.4;
-
-            Grid.SetColumn(colorButton, 0);
-            Grid.SetColumn(calName, 1);
-            Grid.SetColumn(enabledToggle, 3);
-            calGrid.Children.Add(colorButton);
-            calGrid.Children.Add(calName);
-            calGrid.Children.Add(enabledToggle);
-
-            calCard.Child = calGrid;
-            AccountDetailPanel.Children.Add(calCard);
+    private void UpdateCachedCalendarColor(string calendarId, string color)
+    {
+        foreach (var evtList in _events.Values)
+        {
+            foreach (var evt in evtList.Where(evt => evt.CalendarId == calendarId))
+                evt.CalendarColor = color;
         }
     }
+
+    private static CheckBox CreateCalendarEnabledToggle(CalendarInfo cal, TextBlock calName, Button colorButton)
+    {
+        var enabledToggle = new CheckBox
+        {
+            IsChecked = cal.Enabled,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(8, 0, 0, 0),
+            Tag = cal,
+        };
+
+        enabledToggle.IsCheckedChanged += async (s, _) =>
+        {
+            if (s is CheckBox { Tag: CalendarInfo ci, IsChecked: { } isChecked })
+            {
+                ci.Enabled = isChecked;
+                calName.Foreground = GetCalendarNameForeground(isChecked);
+                colorButton.Opacity = isChecked ? 1.0 : 0.4;
+#if !SAMPLE_DATA
+                if (!string.IsNullOrEmpty(ci.CalendarId))
+                    await App.AccountService!.UpdateCalendarEnabledAsync(ci.CalendarId, isChecked);
+#endif
+            }
+        };
+
+        return enabledToggle;
+    }
+
+    private static IBrush GetCalendarNameForeground(bool isEnabled) =>
+        isEnabled ? ThemeHelper.Brush(PrimaryTextBrushKey) : ThemeHelper.Brush(QuaternaryTextBrushKey);
 
     private static Grid CreateFormField(string label, string value, EventHandler<TextChangedEventArgs>? onChanged = null)
     {
@@ -1101,7 +1012,7 @@ public partial class MainWindow : Window
         {
             Text = label,
             FontSize = 13,
-            Foreground = ThemeHelper.Brush("KavaTextSecondary"),
+            Foreground = ThemeHelper.Brush(SecondaryTextBrushKey),
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, 12, 0),
         };
@@ -1111,7 +1022,7 @@ public partial class MainWindow : Window
             Text = value,
             FontSize = 13,
             Background = ThemeHelper.Brush("KavaInputBg"),
-            Foreground = ThemeHelper.Brush("KavaTextSecondary"),
+            Foreground = ThemeHelper.Brush(SecondaryTextBrushKey),
             BorderBrush = ThemeHelper.Brush("KavaBorder"),
             CornerRadius = new CornerRadius(4),
             Padding = new Thickness(8, 6),
@@ -1206,7 +1117,7 @@ public partial class MainWindow : Window
 #endif
     }
 
-    private async void RemoveAccount_Click(AccountItem account)
+    private async Task RemoveAccountAsync(AccountItem account)
     {
 #if SAMPLE_DATA
         return;
@@ -1224,7 +1135,7 @@ public partial class MainWindow : Window
     {
         AddAccountStatus.Text = message;
         AddAccountStatus.Foreground = isError
-            ? ThemeHelper.Brush("KavaDestructive")
+            ? ThemeHelper.Brush(DestructiveBrushKey)
             : ThemeHelper.Brush("KavaSuccess");
         AddAccountStatus.IsVisible = true;
     }
@@ -1248,7 +1159,7 @@ public partial class MainWindow : Window
                     Background = Brush.Parse(c),
                     CornerRadius = new CornerRadius(4),
                     BorderThickness = new Thickness(c.Equals(_subscribeColor, StringComparison.OrdinalIgnoreCase) ? 2 : 0),
-                    BorderBrush = ThemeHelper.Brush("KavaTextPrimary"),
+                    BorderBrush = ThemeHelper.Brush(PrimaryTextBrushKey),
                 };
                 var btn = new Button
                 {
@@ -1323,7 +1234,7 @@ public partial class MainWindow : Window
     {
         SubscribeStatus.Text = message;
         SubscribeStatus.Foreground = isError
-            ? ThemeHelper.Brush("KavaDestructive")
+            ? ThemeHelper.Brush(DestructiveBrushKey)
             : ThemeHelper.Brush("KavaSuccess");
         SubscribeStatus.IsVisible = true;
     }
