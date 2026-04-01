@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: Build and Test
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore solution
+        shell: pwsh
+        working-directory: Kava
+        run: dotnet restore Kava.slnx
+
+      - name: Build solution
+        shell: pwsh
+        working-directory: Kava
+        run: dotnet build Kava.slnx -c Debug --no-restore
+
+      - name: Run tests
+        shell: pwsh
+        working-directory: Kava
+        run: dotnet test Kava.slnx -c Debug --no-build --logger "trx;LogFileName=test-results.trx"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            Kava/**/TestResults/**/*.trx
+
+  sonar:
+    name: SonarQube Analysis
+    runs-on: windows-latest
+    if: github.event_name != 'pull_request'
+
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Run Sonar scan
+        shell: pwsh
+        run: .\Kava\scripts\sonar-scan.ps1
+
+      - name: Upload Sonar summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonar-summary
+          path: |
+            Kava/.sonar/output/sonar-summary.json
+            Kava/.sonar/output/sonar-summary.md
