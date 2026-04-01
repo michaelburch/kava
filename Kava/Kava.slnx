@@ -6,6 +6,9 @@
     <Project Path="src/Kava.Desktop/Kava.Desktop.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Core.Providers.CalDav.Tests/Core.Providers.CalDav.Tests.csproj" />
+    <Project Path="tests/Core.Persistence.Tests/Core.Persistence.Tests.csproj" />
+    <Project Path="tests/Kava.Desktop.Tests/Kava.Desktop.Tests.csproj" />
     <Project Path="tests/Kava.Core.Tests/Kava.Core.Tests.csproj" />
   </Folder>
 </Solution>

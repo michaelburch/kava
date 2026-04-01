@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <RootNamespace>Kava.Core.Tests</RootNamespace>
+    <RootNamespace>Kava.Desktop.Tests</RootNamespace>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Kava.Core\Kava.Core.csproj" />
+    <ProjectReference Include="..\..\src\Kava.Desktop\Kava.Desktop.csproj" />
   </ItemGroup>
 
 </Project>
