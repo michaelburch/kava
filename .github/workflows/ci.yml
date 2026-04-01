@@ -55,7 +55,10 @@ jobs:
 
   sonar:
     name: SonarQube Analysis
-    runs-on: windows-latest
+    runs-on:
+      - self-hosted
+      - windows
+    environment: dev
     if: github.event_name != 'pull_request'
 
     env:
