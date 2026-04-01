@@ -24,6 +24,7 @@ param(
     [string]$ProjectName = "Kava",
     [string]$Configuration = "Debug",
     [string]$SolutionPath = "Kava.slnx",
+    [string]$NuGetSource = "https://api.nuget.org/v3/index.json",
     [string]$CoverageExclusions = "src/Kava.Desktop/**/*.axaml,src/Kava.Desktop/App.axaml.cs,src/Kava.Desktop/FlyoutWindow.axaml.cs,src/Kava.Desktop/MainWindow.axaml.cs,src/Kava.Desktop/Program.cs,src/Kava.Desktop/ThemeHelper.cs,src/Kava.Desktop/TrayIconManager.cs",
     [int]$PollingIntervalSeconds = 5,
     [int]$PollingTimeoutSeconds = 300
@@ -76,6 +77,73 @@ function Invoke-SonarApi {
     }
 
     Invoke-RestMethod -Method Get -Uri $uriBuilder.Uri -Headers @{ Authorization = $script:SonarAuthHeader }
+}
+
+function Ensure-NuGetSource {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$SourceUrl
+    )
+
+    $sourcesOutput = & dotnet nuget list source
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to inspect NuGet sources."
+    }
+
+    $normalizedSourceUrl = $SourceUrl.TrimEnd('/')
+    $matchingSourceLine = @($sourcesOutput | Where-Object {
+        $_ -match [regex]::Escape($normalizedSourceUrl)
+    } | Select-Object -First 1)
+
+    if ($matchingSourceLine.Count -eq 0) {
+        Invoke-Step -FilePath "dotnet" -ArgumentList @("nuget", "add", "source", $SourceUrl, "--name", "nuget.org") -Description "Adding NuGet.org package source"
+        return
+    }
+
+    if ($matchingSourceLine[0] -match '^\s*\d+\.\s+(?<name>.+?)\s+\[(?<state>Disabled)\]') {
+        $sourceName = $Matches.name.Trim()
+        Invoke-Step -FilePath "dotnet" -ArgumentList @("nuget", "enable", "source", $sourceName) -Description "Enabling NuGet package source '$sourceName'"
+    }
+}
+
+function Assert-QualityGatePassed {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$QualityGate
+    )
+
+    $status = [string]$QualityGate.projectStatus.status
+    if ($status -eq "OK") {
+        return
+    }
+
+    $failedConditions = @(
+        @($QualityGate.projectStatus.conditions) |
+            Where-Object { [string]$_.status -eq "ERROR" } |
+            ForEach-Object {
+                $actualValue = if ($null -ne $_.actualValue -and $_.actualValue -ne "") {
+                    $_.actualValue
+                }
+                else {
+                    "n/a"
+                }
+
+                $errorThreshold = if ($null -ne $_.errorThreshold -and $_.errorThreshold -ne "") {
+                    $_.errorThreshold
+                }
+                else {
+                    "n/a"
+                }
+
+                "$($_.metricKey): actual=$actualValue threshold=$errorThreshold comparator=$($_.comparator)"
+            }
+    )
+
+    if ($failedConditions.Count -eq 0) {
+        throw "SonarQube quality gate failed with status '$status'."
+    }
+
+    throw "SonarQube quality gate failed with status '$status'. Failed conditions: $($failedConditions -join '; ')"
 }
 
 function Read-KeyValueFile {
@@ -710,6 +778,8 @@ $null = New-Item -ItemType Directory -Path $toolPath -Force
 $null = New-Item -ItemType Directory -Path $outputPath -Force
 $null = New-Item -ItemType Directory -Path $testResultsPath -Force
 
+Ensure-NuGetSource -SourceUrl $NuGetSource
+
 $scannerExecutable = Join-Path $toolPath "dotnet-sonarscanner.exe"
 if (-not (Test-Path $scannerExecutable)) {
     $scannerExecutable = Join-Path $toolPath "dotnet-sonarscanner"
@@ -892,6 +962,7 @@ try {
     New-SummaryMarkdown -Summary $summary -IssueRecords $issueRecords | Set-Content -Path $summaryMarkdownPath -Encoding utf8
 
     Write-Host "Wrote SonarQube summary to $summaryMarkdownPath" -ForegroundColor Green
+    Assert-QualityGatePassed -QualityGate $qualityGate
 }
 catch {
     if ($analysisStarted -and -not $analysisFinalized) {
