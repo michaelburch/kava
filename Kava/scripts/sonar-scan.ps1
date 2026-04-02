@@ -26,6 +26,7 @@ param(
     [string]$SolutionPath = "Kava.slnx",
     [string]$NuGetSource = "https://api.nuget.org/v3/index.json",
     [bool]$UseScannerCliEndStep = $true,
+    [switch]$VerboseLogging,
     [string]$CoverageExclusions = "src/Kava.Desktop/**/*.axaml,src/Kava.Desktop/App.axaml.cs,src/Kava.Desktop/FlyoutWindow.axaml.cs,src/Kava.Desktop/MainWindow.axaml.cs,src/Kava.Desktop/Program.cs,src/Kava.Desktop/ThemeHelper.cs,src/Kava.Desktop/TrayIconManager.cs",
     [int]$PollingIntervalSeconds = 5,
     [int]$PollingTimeoutSeconds = 300
@@ -802,8 +803,24 @@ if (-not (Test-Path $scannerExecutable)) {
     exit 1
 }
 
+if ($VerboseLogging) {
+    Write-Host "SonarScanner executable: $scannerExecutable" -ForegroundColor DarkCyan
+
+    Write-Host "Installed SonarScanner tool:" -ForegroundColor DarkCyan
+    & dotnet tool list --tool-path $toolPath
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Unable to inspect the installed SonarScanner tool version."
+    }
+
+    if ($env:SONAR_SCANNER_OPTS) {
+        Write-Host "SONAR_SCANNER_OPTS is set for this run." -ForegroundColor DarkCyan
+    }
+}
+
 $analysisStarted = $false
 $analysisFinalized = $false
+$analysisPhase = "initializing"
 
 try {
     Push-Location $projectRoot
@@ -821,19 +838,26 @@ try {
         $sonarBeginArguments += "/d:sonar.scanner.useSonarScannerCLI=true"
     }
 
+    if ($VerboseLogging) {
+        $sonarBeginArguments += "/d:sonar.verbose=true"
+    }
+
     if (-not [string]::IsNullOrWhiteSpace($CoverageExclusions)) {
         $sonarBeginArguments += "/d:sonar.coverage.exclusions=$CoverageExclusions"
     }
 
+    $analysisPhase = "begin"
     Invoke-Step -FilePath $scannerExecutable -ArgumentList $sonarBeginArguments -Description "Starting SonarQube analysis"
 
     $analysisStarted = $true
 
+    $analysisPhase = "build"
     Invoke-Step -FilePath "dotnet" -ArgumentList @("build", $resolvedSolutionPath, "-c", $Configuration) -Description "Building solution for analysis"
 
     Get-ChildItem -Path $projectRoot -Filter "coverage.opencover.xml" -Recurse -ErrorAction SilentlyContinue |
         Remove-Item -Force -ErrorAction SilentlyContinue
 
+    $analysisPhase = "test"
     Invoke-Step -FilePath "dotnet" -ArgumentList @(
         "test",
         $resolvedSolutionPath,
@@ -845,6 +869,7 @@ try {
         "--collect:XPlat Code Coverage;Format=opencover"
     ) -Description "Running tests with coverage collection"
 
+    $analysisPhase = "end"
     Invoke-Step -FilePath $scannerExecutable -ArgumentList @(
         "end",
         "/d:sonar.token=$SonarToken"
@@ -970,7 +995,7 @@ try {
     Assert-QualityGatePassed -QualityGate $qualityGate
 }
 catch {
-    if ($analysisStarted -and -not $analysisFinalized) {
+    if ($analysisStarted -and -not $analysisFinalized -and $analysisPhase -ne "end") {
         try {
             & $scannerExecutable end "/d:sonar.token=$SonarToken" | Out-Null
         }
@@ -978,6 +1003,7 @@ catch {
         }
     }
 
+    Write-Host "SonarQube analysis failed during phase: $analysisPhase" -ForegroundColor Yellow
     Write-Error $_
     exit 1
 }

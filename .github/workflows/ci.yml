@@ -63,6 +63,7 @@ jobs:
 
     env:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_SCANNER_JAVA_OPTS: -Djavax.net.debug=ssl:handshake:record -Djava.net.useSystemProxies=false -Djava.net.preferIPv4Stack=true -Djava.net.preferIPv6Addresses=false
 
     steps:
       - name: Check Sonar configuration
@@ -91,6 +92,16 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Capture runner diagnostics
+        if: steps.sonar-config.outputs.enabled == 'true'
+        shell: pwsh
+        run: |
+          Write-Host "Runner OS:"; Get-ComputerInfo | Select-Object WindowsProductName, WindowsVersion, OsBuildNumber, OsHardwareAbstractionLayer | Format-List
+          Write-Host "dotnet --info"; dotnet --info
+          Write-Host "WinHTTP proxy"; netsh winhttp show proxy
+          Write-Host "Proxy-related environment variables"; Get-ChildItem Env: | Where-Object { $_.Name -match '^(HTTP|HTTPS|ALL|NO)_PROXY$|^SONAR_' } | Sort-Object Name | Format-Table -AutoSize
+          Write-Host "DNS resolution for sonar.burch.es"; Resolve-DnsName sonar.burch.es | Select-Object Name, Type, IPAddress | Format-Table -AutoSize
+
       - name: Run Sonar scan
         if: steps.sonar-config.outputs.enabled == 'true'
         shell: pwsh
@@ -114,7 +125,7 @@ jobs:
             Remove-Item "Env:$_" -ErrorAction SilentlyContinue
           }
 
-          .\Kava\scripts\sonar-scan.ps1
+          .\Kava\scripts\sonar-scan.ps1 -VerboseLogging
 
       - name: Upload Sonar summary
         if: always() && steps.sonar-config.outputs.enabled == 'true'
